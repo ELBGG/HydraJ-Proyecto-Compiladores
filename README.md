@@ -1,4 +1,4 @@
-# HydraJ
+# HydraJ (ALPHA)
 
 Proyecto para el curso de **Compiladores** — Universidad Nacional de San Agustín de Arequipa (UNSA).
 
