@@ -14,6 +14,7 @@ val imguiVersion = "1.89.0"
 
 dependencies {
     implementation("io.github.spair:imgui-java-app:$imguiVersion")
+    implementation("com.alphacephei:vosk:0.3.45")
 
     testImplementation(platform("org.junit:junit-bom:5.10.0"))
     testImplementation("org.junit.jupiter:junit-jupiter")

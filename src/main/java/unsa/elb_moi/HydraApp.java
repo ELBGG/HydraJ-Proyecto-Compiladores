@@ -8,6 +8,9 @@ import imgui.app.Application;
 import imgui.app.Configuration;
 import imgui.flag.*;
 import imgui.type.*;
+import unsa.elb_moi.compiler.CompileResult;
+import unsa.elb_moi.compiler.HydraCompiler;
+import unsa.elb_moi.voice.VoiceRecognizer;
 
 import java.io.IOException;
 import java.nio.file.*;
@@ -30,6 +33,9 @@ public class HydraApp extends Application {
     private final ImBoolean showVoice   = new ImBoolean(true);
     private final ImBoolean showConsole = new ImBoolean(true);
 
+    private final VoiceRecognizer voice = new VoiceRecognizer();
+    private final ImString voiceModelPath = new ImString("D:/vosk-model-small-es-0.42", 512);
+
     private boolean        triggerNewProject  = false;
     private boolean        triggerOpenProject = false;
     private final ImString dlgName = new ImString("MyProject", 128);
@@ -41,7 +47,7 @@ public class HydraApp extends Application {
     private static final int   PANEL_FLAGS = ImGuiWindowFlags.NoResize
         | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoCollapse;
     private static final float LEFT_W  = 220;
-    private static final float VOICE_H = 120;
+    private static final float VOICE_H = 165;
     private static final float CONS_H  = 180;
 
     @Override
@@ -60,6 +66,7 @@ public class HydraApp extends Application {
         io.setFontGlobalScale(1.1f);
         applyDarkTheme();
         tabs.add(new EditorTab());
+        Runtime.getRuntime().addShutdownHook(new Thread(voice::close));
     }
 
     @Override
@@ -224,15 +231,96 @@ public class HydraApp extends Application {
         ImGui.setNextWindowPos(x, y, ImGuiCond.Always);
         ImGui.setNextWindowSize(w, h, ImGuiCond.Always);
         if (!ImGui.begin("Voice Input  [audio]", showVoice, PANEL_FLAGS)) { ImGui.end(); return; }
-        ImVec2 avail = ImGui.getContentRegionAvail();
-        ImGui.inputTextMultiline("##voice", voiceLog, avail.x, avail.y - 28,
-            ImGuiInputTextFlags.ReadOnly);
-        if (ImGui.button("Simulate: 'create for loop'")) {
-            voiceLog.set(voiceLog.get() + "> create for loop\n");
-            insertBlock("for loop");
-            appendConsole("[VOICE] Command: create for loop");
+
+        pollVoiceResults();
+
+        VoiceRecognizer.State vs = voice.getState();
+        switch (vs) {
+            case IDLE      -> ImGui.textDisabled("● Idle");
+            case LISTENING -> {
+                ImGui.pushStyleColor(ImGuiCol.Text, 0.20f, 0.90f, 0.30f, 1f);
+                ImGui.text("● Escuchando...");
+                ImGui.popStyleColor();
+            }
+            case ERROR -> {
+                ImGui.pushStyleColor(ImGuiCol.Text, 0.90f, 0.25f, 0.25f, 1f);
+                ImGui.text("● Error: " + voice.getLastError());
+                ImGui.popStyleColor();
+            }
         }
+
+        ImGui.sameLine();
+        if (vs == VoiceRecognizer.State.LISTENING) {
+            if (ImGui.button("Detener")) voice.stop();
+        } else {
+            if (ImGui.button("Escuchar")) {
+                if (!voice.isModelLoaded()) loadVoiceModel();
+                if (voice.isModelLoaded() && !voice.start())
+                    appendConsole("[VOICE] Error al abrir micrófono: " + voice.getLastError());
+            }
+            ImGui.sameLine();
+            if (ImGui.button("Cargar modelo")) loadVoiceModel();
+        }
+
+        ImGui.setNextItemWidth(w - 24);
+        ImGui.inputText("##modelpath", voiceModelPath);
+
+        ImGui.separator();
+
+        String partial = voice.getPartialText();
+        if (!partial.isEmpty()) {
+            ImGui.pushStyleColor(ImGuiCol.Text, 1.00f, 0.80f, 0.20f, 1f);
+            ImGui.text("~ " + partial);
+            ImGui.popStyleColor();
+        } else {
+            ImGui.textDisabled(vs == VoiceRecognizer.State.LISTENING ? "~ (esperando audio...)" : "~ ");
+        }
+
+        ImGui.separator();
+        ImVec2 avail = ImGui.getContentRegionAvail();
+        ImGui.inputTextMultiline("##voice", voiceLog, avail.x, avail.y,
+            ImGuiInputTextFlags.ReadOnly);
+
         ImGui.end();
+    }
+
+    private void loadVoiceModel() {
+        if (voice.loadModel(voiceModelPath.get()))
+            appendConsole("[VOICE] Modelo cargado: " + voiceModelPath.get());
+        else
+            appendConsole("[VOICE] No se pudo cargar el modelo: " + voice.getLastError());
+    }
+
+    private void pollVoiceResults() {
+        String text;
+        while ((text = voice.pollResult()) != null) {
+            voiceLog.set(voiceLog.get() + "> " + text + "\n");
+            String cmd = processVoiceCommand(text);
+            if (cmd != null) appendConsole("[VOICE] Comando ejecutado: " + cmd);
+            else             appendConsole("[VOICE] Transcripción: " + text);
+        }
+    }
+
+    private String processVoiceCommand(String text) {
+        String t = text.toLowerCase();
+        if (contains(t, "compilar","compile"))              { compile();                 return "compilar"; }
+        if (contains(t, "ejecutar","correr","run"))         { executeCode();             return "ejecutar"; }
+        if (contains(t, "guardar","save"))                  { saveCurrentTab();          return "guardar";  }
+        if (contains(t, "limpiar","clear","borrar consola")){ consoleLog.set("");        return "limpiar consola"; }
+        if (contains(t, "nuevo archivo","new file"))        { tabs.add(new EditorTab()); return "nuevo archivo";  }
+        if (t.contains("for"))                              { insertBlock("for loop");   return "for loop";  }
+        if (contains(t, "if","si entonces"))                { insertBlock("if / else");  return "if / else"; }
+        if (contains(t, "while","mientras"))                { insertBlock("while");      return "while";     }
+        if (contains(t, "funcion","función","function"))    { insertBlock("function");   return "function";  }
+        if (t.contains("variable"))                         { insertBlock("variable");   return "variable";  }
+        if (contains(t, "imprimir","print","println"))      { insertBlock("print");      return "print";     }
+        if (contains(t, "retornar","return","retorno"))     { insertBlock("return");     return "return";    }
+        return null;
+    }
+
+    private static boolean contains(String text, String... terms) {
+        for (String term : terms) if (text.contains(term)) return true;
+        return false;
     }
 
     private void drawConsolePanel(float y, float x, float w, float h) {
@@ -344,12 +432,28 @@ public class HydraApp extends Application {
         appendConsole("[BLOCK] " + label);
     }
 
+    private final HydraCompiler compiler = new HydraCompiler();
+
     private void compile() {
-        if (tabs.isEmpty()) { appendConsole("[BUILD] Nothing to compile."); return; }
+        if (tabs.isEmpty()) { appendConsole("[BUILD] Nada que compilar."); return; }
         String code = tabs.get(activeTab).buffer.get().trim();
-        appendConsole("[BUILD] Compiling...");
-        if (code.isBlank()) appendConsole("[BUILD] File is empty.");
-        else appendConsole("[BUILD] Lexer → Parser → Semantic → CodeGen  (TODO)\n[BUILD] Done.");
+        if (code.isBlank()) { appendConsole("[BUILD] El archivo está vacío."); return; }
+
+        appendConsole("─────────────────────────────────");
+        CompileResult r = compiler.compile(code);
+
+        r.logs.forEach(this::appendConsole);
+        r.warnings.forEach(w -> appendConsole("[WARN]  " + w));
+        r.errors.forEach(e   -> appendConsole("[ERROR] " + e));
+
+        if (r.success) {
+            appendConsole("─────────────────────────────────");
+            appendConsole("[IR]\n" + r.ir);
+            appendConsole("[BUILD] Compilación exitosa.");
+        } else {
+            appendConsole("[BUILD] Compilación fallida — " + r.errors.size() + " error(es).");
+        }
+        appendConsole("─────────────────────────────────");
     }
 
     private void executeCode() { appendConsole("[RUN] Executing... (TODO)"); }
