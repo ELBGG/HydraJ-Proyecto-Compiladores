@@ -62,7 +62,7 @@ public class HydraApp extends Application {
         super.initImGui(config);
         ImGuiIO io = ImGui.getIO();
         io.getFonts().addFontFromFileTTF(
-            "D:/aaa/HydraJ/src/main/resources/assets/fonts/ARIAL.TTF", 18.0f);
+            "E:/2026-A/COMPILADORES/HydraJ-Proyecto-Compiladores/src/main/resources/assets/fonts/ARIAL.TTF", 18.0f);
         io.setFontGlobalScale(1.1f);
         applyDarkTheme();
         tabs.add(new EditorTab());
