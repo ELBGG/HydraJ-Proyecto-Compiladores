@@ -1,7 +1,6 @@
 package unsa.elb_moi.compiler;
 
 import unsa.elb_moi.compiler.ast.Ast;
-
 import java.util.List;
 
 public class HydraCompiler {
@@ -23,18 +22,18 @@ public class HydraCompiler {
         if (result.hasErrors()) { result.success = false; return result; }
         result.log("[PARSER] AST construido — " + program.classes.size() + " clase(s)");
 
-        result.log("[SEMANTIC] Analizando semántica...");
+        result.log("[SEMANTICO] Analizando semántica...");
         SemanticAnalyzer sem = new SemanticAnalyzer();
         sem.analyze(program);
         sem.getErrors().forEach(e   -> result.error(e));
         sem.getWarnings().forEach(w -> result.warning(w));
         if (result.hasErrors()) { result.success = false; return result; }
-        result.log("[SEMANTIC] OK");
+        result.log("[SEMANTICO] OK");
 
-        result.log("[CODEGEN] Generando código intermedio...");
-        CodeGenerator cg = new CodeGenerator();
-        result.ir = cg.generate(program);
-        result.log("[CODEGEN] Hecho.");
+        result.log("[TRANSPILADOR] Generando código Java...");
+        JavaTranspiler transpiler = new JavaTranspiler();
+        result.ir = transpiler.transpile(program);
+        result.log("[TRANSPILADOR] Listo.");
 
         result.success = true;
         return result;
