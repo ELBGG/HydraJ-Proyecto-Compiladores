@@ -1,0 +1,83 @@
+/* ── Reset & Base ── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+body {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  font-size: 11px;
+  user-select: none;
+  -webkit-user-select: none;
+  background-color: var(--vscode-workbench-background);
+}
+
+#workbench-root {
+  height: 100%;
+  width: 100%;
+}
+
+/* ── Font system ── */
+.hydra-workbench {
+  --monaco-monospace-font: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', Consolas, 'Courier New', monospace;
+}
+
+.hydra-workbench, .hydra-workbench input, .hydra-workbench textarea {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.hydra-workbench .monaco-editor,
+.hydra-workbench code,
+.hydra-workbench pre,
+.hydra-workbench textarea.code-input {
+  font-family: var(--monaco-monospace-font);
+}
+
+/* ── Workbench shell ── */
+.hydra-workbench {
+  font-size: 13px;
+  line-height: 1.4em;
+  color: var(--vscode-foreground);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+
+  --vscode-shadow-sm: 0 0 4px rgba(0, 0, 0, 0.08);
+  --vscode-shadow-md: 0 0 6px rgba(0, 0, 0, 0.08);
+  --vscode-shadow-lg: 0 0 12px rgba(0, 0, 0, 0.14);
+  --vscode-shadow-xl: 0 0 20px rgba(0, 0, 0, 0.15);
+  --vscode-shadow-hover: 0 0 8px rgba(0, 0, 0, 0.12);
+}
+
+.hydra-workbench ::selection {
+  background-color: var(--vscode-selection-background);
+}
+
+/* ── Scrollbars ── */
+.hydra-workbench ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.hydra-workbench ::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbarSlider-background);
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.hydra-workbench ::-webkit-scrollbar-thumb:hover {
+  background: var(--vscode-scrollbarSlider-hoverBackground);
+}
+
+.hydra-workbench ::-webkit-scrollbar-thumb:active {
+  background: var(--vscode-scrollbarSlider-activeBackground);
+}
+
+.hydra-workbench ::-webkit-scrollbar-track {
+  background: transparent;
+}

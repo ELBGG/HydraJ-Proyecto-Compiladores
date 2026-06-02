@@ -1,0 +1,41 @@
+.hydra-workbench .part {
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.hydra-workbench .part > .title {
+  height: 35px;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  overflow: hidden;
+  padding: 0 8px;
+}
+
+.hydra-workbench .part > .title > .title-label {
+  line-height: 35px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-left: 12px;
+}
+
+.hydra-workbench .part > .title > .title-label h2 {
+  font-size: 11px;
+  cursor: default;
+  font-weight: 600;
+  margin: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.hydra-workbench .part > .title > .title-actions {
+  height: 35px;
+  flex: 1;
+  padding-left: 5px;
+}
+
+.hydra-workbench .part > .content {
+  font-size: 13px;
+}

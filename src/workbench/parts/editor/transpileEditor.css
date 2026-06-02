@@ -1,0 +1,99 @@
+/* ── Transpile Editor split view ── */
+.transpile-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  padding: 12px;
+  gap: 0;
+}
+
+.transpile-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+  flex-shrink: 0;
+}
+
+.transpile-label {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  font-weight: 500;
+}
+
+.transpile-btn {
+  padding: 5px 14px;
+  border-radius: 4px;
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  font-size: 12px;
+  cursor: pointer;
+  border: none;
+  user-select: none;
+  transition: background 0.1s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.transpile-btn:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
+.transpile-split {
+  display: flex;
+  flex: 1;
+  gap: 12px;
+  min-height: 0;
+}
+
+.transpile-pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.transpile-pane-label {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  margin-bottom: 6px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.transpile-input {
+  flex: 1;
+  width: 100%;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border);
+  border-radius: 4px;
+  padding: 12px;
+  font-family: var(--monaco-monospace-font);
+  font-size: 13px;
+  line-height: 1.6;
+  resize: none;
+  outline: none;
+  tab-size: 4;
+}
+
+.transpile-input:focus {
+  border-color: var(--vscode-focusBorder);
+}
+
+.transpile-output {
+  flex: 1;
+  background: var(--vscode-sideBar-background);
+  border: 1px solid var(--vscode-input-border);
+  border-radius: 4px;
+  padding: 12px;
+  font-family: var(--monaco-monospace-font);
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre;
+  overflow: auto;
+  color: var(--vscode-editor-foreground);
+}

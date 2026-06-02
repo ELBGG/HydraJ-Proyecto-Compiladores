@@ -1,0 +1,46 @@
+.statusbar-part {
+  background-color: var(--vscode-statusBar-background);
+  color: var(--vscode-statusBar-foreground);
+  height: 22px;
+  border-top: 1px solid var(--vscode-statusBar-border);
+  user-select: none;
+}
+
+.statusbar-content {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 4px;
+}
+
+.statusbar-left {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+
+.statusbar-right {
+  display: flex;
+  align-items: center;
+}
+
+.statusbar-item {
+  display: flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  gap: 4px;
+  font-size: 12px;
+  transition: background-color 0.08s;
+}
+
+.statusbar-item:hover {
+  background-color: var(--vscode-statusBarItem-hoverBackground);
+}
+
+.statusbar-item:active {
+  background-color: var(--vscode-statusBarItem-activeBackground);
+}

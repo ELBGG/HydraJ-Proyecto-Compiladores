@@ -1,0 +1,32 @@
+.hydra-workbench {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.titlebar-container {
+  flex-shrink: 0;
+}
+
+.body-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.main-container {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  min-height: 0;
+}
+
+.panel-container {
+  flex-shrink: 0;
+  display: none; /* hidden by default */
+}
+
+.statusbar-container {
+  flex-shrink: 0;
+}

@@ -1,0 +1,76 @@
+.activitybar-part {
+  background-color: var(--vscode-activityBar-background);
+  width: 48px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--vscode-activityBar-border);
+}
+
+.activitybar-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.activitybar-top {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  padding-top: 4px;
+}
+
+.activitybar-bottom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-bottom: 4px;
+}
+
+.activitybar-icon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--vscode-activityBar-inactiveForeground);
+  font-size: 18px;
+  position: relative;
+  transition: color 0.1s;
+}
+
+.activitybar-icon:hover {
+  color: var(--vscode-activityBar-foreground);
+}
+
+.activitybar-icon.active {
+  color: var(--vscode-activityBar-foreground);
+}
+
+.activitybar-icon.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  background-color: var(--vscode-activityBar-activeBorder);
+  border-radius: 0 1px 1px 0;
+}
+
+.activitybar-icon .badge {
+  position: absolute;
+  top: 6px;
+  right: 4px;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  font-size: 9px;
+  font-weight: 600;
+  padding: 0 4px;
+  border-radius: 8px;
+  min-width: 14px;
+  height: 14px;
+  text-align: center;
+  line-height: 14px;
+}

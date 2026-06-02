@@ -1,0 +1,139 @@
+/* ── Editor shell ── */
+.editor-part {
+  background-color: var(--vscode-editor-background);
+  color: var(--vscode-editor-foreground);
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+.editor-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ── Tab bar ── */
+.editor-tabs {
+  display: flex;
+  align-items: stretch;
+  height: 35px;
+  background-color: var(--vscode-tab-inactiveBackground);
+  border-bottom: 1px solid var(--vscode-tab-border);
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex-shrink: 0;
+}
+
+.editor-tabs::-webkit-scrollbar {
+  height: 0;
+}
+
+.editor-tab {
+  display: flex;
+  align-items: center;
+  height: 35px;
+  padding: 0 14px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  border-right: 1px solid var(--vscode-tab-border);
+  color: var(--vscode-tab-inactiveForeground);
+  background-color: var(--vscode-tab-inactiveBackground);
+  gap: 6px;
+  user-select: none;
+  position: relative;
+  min-width: 0;
+  transition: background-color 0.08s, color 0.08s;
+}
+
+.editor-tab:hover {
+  background-color: var(--vscode-tab-hoverBackground);
+  color: var(--vscode-tab-inactiveForeground);
+}
+
+.editor-tab.active {
+  color: var(--vscode-tab-activeForeground);
+  background-color: var(--vscode-tab-activeBackground);
+  border-top: 1px solid var(--vscode-tab-activeBorderTop);
+  margin-top: -1px;
+}
+
+.editor-tab .tab-close {
+  font-size: 10px;
+  opacity: 0;
+  margin-left: 2px;
+  border-radius: 3px;
+  padding: 0 3px;
+  line-height: 16px;
+  transition: opacity 0.08s;
+}
+
+.editor-tab:hover .tab-close {
+  opacity: 0.5;
+}
+
+.editor-tab .tab-close:hover {
+  opacity: 1;
+  background-color: rgba(128, 128, 128, 0.25);
+}
+
+/* ── Editor body ── */
+.editor-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── Welcome screen ── */
+.editor-welcome {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--vscode-descriptionForeground);
+  text-align: center;
+  padding: 40px;
+}
+
+.editor-welcome h1 {
+  font-weight: 300;
+  font-size: 36px;
+  margin: 0 0 12px 0;
+  letter-spacing: -0.5px;
+}
+
+.editor-welcome p {
+  font-size: 14px;
+  margin: 4px 0;
+  max-width: 480px;
+  line-height: 1.6;
+}
+
+.editor-welcome .demo-card {
+  margin-top: 24px;
+  text-align: left;
+  background: var(--vscode-editorWidget-background);
+  border: 1px solid var(--vscode-editorWidget-border);
+  border-radius: 6px;
+  padding: 16px 20px;
+  font-family: var(--monaco-monospace-font);
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--vscode-editorWidget-foreground);
+  max-width: 560px;
+  width: 100%;
+}
+
+.editor-welcome .demo-card .arrow {
+  color: var(--vscode-textLink-foreground);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 13px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--vscode-editorWidget-border);
+}
