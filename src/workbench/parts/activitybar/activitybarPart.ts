@@ -1,30 +1,40 @@
 import './activitybarPart.css';
 import { Part } from '../../part.js';
 import { $, append } from '../../../base/browser/dom.js';
+import { Emitter } from '../../../base/common/event.js';
+import {
+  iconExplorer, iconSearch, iconBlocks, iconMic,
+  iconBranch, iconPlay, iconExtensions, iconPerson, iconGear,
+  createIconElement,
+} from '../../../base/browser/icons.js';
 
 interface ActivityBarItem {
   id: string;
   icon: string;
   label: string;
-  badge?: string;
 }
 
 export class ActivitybarPart extends Part {
-  private _activeId = 'explorer';
+  private _activeId: string | null = 'explorer';
   private _items: ActivityBarItem[] = [
-    { id: 'explorer', icon: '\u{1F4C1}', label: 'Explorer' },
-    { id: 'search', icon: '\u{1F50D}', label: 'Search' },
-    { id: 'source-control', icon: '\u{1F500}', label: 'Source Control' },
-    { id: 'debug', icon: '\u25B6', label: 'Run and Debug' },
-    { id: 'extensions', icon: '\u25A1', label: 'Extensions' },
+    { id: 'explorer',       icon: 'explorer',       label: 'Explorer' },
+    { id: 'search',         icon: 'search',         label: 'Search' },
+    { id: 'blocks',         icon: 'blocks',         label: 'Bloques de Código' },
+    { id: 'stt',            icon: 'mic',            label: 'Speech to Text' },
+    { id: 'source-control', icon: 'branch',         label: 'Source Control' },
+    { id: 'debug',          icon: 'play',           label: 'Run and Debug' },
+    { id: 'extensions',     icon: 'extensions',     label: 'Extensions' },
   ];
 
   private _bottomItems: ActivityBarItem[] = [
-    { id: 'accounts', icon: '\u{1F464}', label: 'Accounts' },
-    { id: 'settings', icon: '\u2699', label: 'Settings' },
+    { id: 'accounts', icon: 'person', label: 'Accounts' },
+    { id: 'settings', icon: 'gear',   label: 'Settings' },
   ];
 
   private _iconElements = new Map<string, HTMLElement>();
+
+  private readonly _onIconActivate = this._register(new Emitter<string>());
+  readonly onIconActivate = this._onIconActivate.event;
 
   constructor() {
     super('activitybar', { hasTitle: false, minimumWidth: 48 });
@@ -35,47 +45,38 @@ export class ActivitybarPart extends Part {
     append(parent, container);
 
     const top = $('div', ['activitybar-top']);
-    for (const item of this._items) {
-      const el = this._createIcon(item);
-      append(top, el);
-    }
+    for (const item of this._items) append(top, this._createIcon(item));
     append(container, top);
 
     const bottom = $('div', ['activitybar-bottom']);
-    for (const item of this._bottomItems) {
-      const el = this._createIcon(item);
-      append(bottom, el);
-    }
+    for (const item of this._bottomItems) append(bottom, this._createIcon(item));
     append(container, bottom);
 
     return container;
   }
 
+  private _iconFns: Record<string, () => string> = {
+    explorer: iconExplorer, search: iconSearch, blocks: iconBlocks, mic: iconMic,
+    branch: iconBranch, play: iconPlay, extensions: iconExtensions,
+    person: iconPerson, gear: iconGear,
+  };
+
   private _createIcon(item: ActivityBarItem): HTMLElement {
     const el = $('div', ['activitybar-icon']);
-    if (item.id === this._activeId) {
-      el.classList.add('active');
-    }
+    if (item.id === this._activeId) el.classList.add('active');
     el.title = item.label;
-    el.textContent = item.icon;
+    const iconEl = createIconElement(this._iconFns[item.icon]?.() ?? '');
+    append(el, iconEl);
     el.dataset.id = item.id;
-
-    if (item.badge) {
-      const badge = $('div', ['badge']);
-      badge.textContent = item.badge;
-      append(el, badge);
-    }
-
     el.addEventListener('click', () => this._onIconClick(item.id));
     this._iconElements.set(item.id, el);
     return el;
   }
 
   private _onIconClick(id: string): void {
-    this._iconElements.forEach((el, key) => {
-      el.classList.toggle('active', key === id);
-    });
+    this._iconElements.forEach((el, key) => el.classList.toggle('active', key === id));
     this._activeId = id;
+    this._onIconActivate.fire(id);
   }
 
   layout(width: number, height: number): void {

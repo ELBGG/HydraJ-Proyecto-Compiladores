@@ -20,6 +20,31 @@
   font-size: 12px;
   color: var(--vscode-descriptionForeground);
   font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.transpile-label .svg-icon svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 1.8;
+}
+
+.transpile-pane-label {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  margin-bottom: 6px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.transpile-pane-label .svg-icon svg {
+  width: 13px;
+  height: 13px;
+  stroke-width: 1.8;
 }
 
 .transpile-btn {
@@ -55,13 +80,11 @@
   min-width: 0;
 }
 
-.transpile-pane-label {
-  font-size: 11px;
-  color: var(--vscode-descriptionForeground);
-  margin-bottom: 6px;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
+.monaco-editor-host {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
 }
 
 .transpile-input {
@@ -96,4 +119,19 @@
   white-space: pre;
   overflow: auto;
   color: var(--vscode-editor-foreground);
+}
+
+.output-toggle-btn {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid var(--vscode-input-border, #555);
+  color: var(--vscode-foreground);
+  border-radius: 3px;
+  padding: 2px 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.output-toggle-btn:hover {
+  background: var(--vscode-list-hoverBackground);
 }

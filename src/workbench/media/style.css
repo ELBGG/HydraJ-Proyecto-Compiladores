@@ -3,6 +3,10 @@
   box-sizing: border-box;
 }
 
+html {
+  height: 100%;
+}
+
 body {
   height: 100%;
   width: 100%;
@@ -16,8 +20,8 @@ body {
 }
 
 #workbench-root {
-  height: 100%;
-  width: 100%;
+  height: 100vh;
+  width: 100vw;
 }
 
 /* ── Font system ── */
@@ -80,4 +84,19 @@ body {
 
 .hydra-workbench ::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* ── SVG Icons ── */
+.svg-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+.svg-icon svg {
+  width: 16px;
+  height: 16px;
+  display: block;
 }

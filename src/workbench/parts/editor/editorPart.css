@@ -49,6 +49,11 @@
   transition: background-color 0.08s, color 0.08s;
 }
 
+.editor-tab .svg-icon svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 1.8;
+}
 .editor-tab:hover {
   background-color: var(--vscode-tab-hoverBackground);
   color: var(--vscode-tab-inactiveForeground);
@@ -136,4 +141,129 @@
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px solid var(--vscode-editorWidget-border);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   BLOCK CANVAS (Blockly)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.block-canvas {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  background: #1e1e2e;
+  overflow: hidden;
+}
+
+.block-canvas-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  background: #1a1a30;
+  border-bottom: 1px solid #2a2a4a;
+  flex-shrink: 0;
+}
+
+.block-canvas-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #c8c8e8;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.block-canvas-actions { display: flex; gap: 8px; }
+
+.bc-btn {
+  padding: 5px 14px;
+  border-radius: 4px;
+  border: none;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .12s;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.bc-btn:hover { filter: brightness(1.15); transform: translateY(-1px); }
+.bc-btn:active { transform: translateY(0); }
+.bc-btn .svg-icon svg { width: 14px; height: 14px; stroke-width: 2; }
+.bc-btn-clear { background: #3a3a5c; color: #ccc; }
+.bc-btn-gen {
+  background: linear-gradient(135deg, #6a3de8, #5533aa);
+  color: #fff;
+  box-shadow: 0 2px 0 #3a1f7a, 0 2px 8px rgba(85, 51, 170, 0.3);
+}
+
+.bc-workspace {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+.bc-workspace > .blocklySvg {
+  background-color: #1e1e2e !important;
+}
+
+/* ── Blockly dark theme overrides ── */
+.blocklyToolboxDiv {
+  background-color: #1a1a30 !important;
+  color: #c8c8e8 !important;
+  border-right: 1px solid #2a2a4a !important;
+}
+.blocklyTreeRow {
+  height: 32px;
+  line-height: 32px;
+  padding: 0 12px;
+  margin-bottom: 1px;
+  font-size: 13px;
+  font-weight: 600;
+  transition: background 0.1s;
+  cursor: pointer;
+}
+.blocklyTreeRow:hover {
+  background-color: rgba(255,255,255,0.05) !important;
+}
+.blocklyTreeSelected {
+  background-color: rgba(124,124,255,0.12) !important;
+}
+.blocklyTreeIcon { display: none; }
+.blocklyTreeSeparator { border-bottom: 1px solid #2a2a4a; }
+.blocklyFlyoutBackground {
+  fill: #16162a !important;
+}
+.blocklyMainBackground {
+  fill: #1e1e2e !important;
+  stroke-width: 0;
+}
+.blocklyScrollbarHandle {
+  fill: #3a3a5c !important;
+}
+.blocklyScrollbarBackground:hover .blocklyScrollbarHandle {
+  fill: #5a5a7a !important;
+}
+.blocklyDropDownDiv {
+  background: #1a1a30 !important;
+  border: 1px solid #2a2a4a !important;
+}
+.blocklyDropDownDiv .blocklyDropDownArrow {
+  border-bottom-color: #1a1a30 !important;
+}
+.blocklyWidgetDiv .goog-menu {
+  background: #1a1a30 !important;
+  border: 1px solid #2a2a4a !important;
+  color: #c8c8e8 !important;
+}
+.blocklyWidgetDiv .goog-menuitem.goog-menuitem-highlight {
+  background: rgba(124,124,255,0.2) !important;
+}
+.blocklyZoom > image, .blocklyTrash image {
+  opacity: 0.6;
+  filter: brightness(0.8);
+}
+.blocklyZoom > image:hover, .blocklyTrash image:hover {
+  opacity: 1;
+  filter: brightness(1);
 }

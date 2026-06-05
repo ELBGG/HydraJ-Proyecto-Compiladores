@@ -3,6 +3,7 @@ import { Part } from '../../part.js';
 import { $, append } from '../../../base/browser/dom.js';
 import { LanguageRegistry } from '../../../languages/index.js';
 import { Emitter } from '../../../base/common/event.js';
+import { iconGlobe, iconBranch, iconPencil, createIconElement } from '../../../base/browser/icons.js';
 
 export class StatusbarPart extends Part {
   private _progLangEl!: HTMLElement;
@@ -39,12 +40,14 @@ export class StatusbarPart extends Part {
     const left = $('div', ['statusbar-left']);
 
     const remoteItem = $('div', ['statusbar-item']);
-    remoteItem.textContent = '\u{1F310} HydraCode';
+    append(remoteItem, createIconElement(iconGlobe()));
+    remoteItem.append(' HydraCode');
     remoteItem.title = 'HydraCode';
     append(left, remoteItem);
 
     const branchItem = $('div', ['statusbar-item']);
-    branchItem.textContent = '\u{1F500} main';
+    append(branchItem, createIconElement(iconBranch()));
+    branchItem.append(' main');
     branchItem.title = 'Source Control (main)';
     append(left, branchItem);
 
@@ -63,7 +66,7 @@ export class StatusbarPart extends Part {
     const right = $('div', ['statusbar-right']);
 
     const errorsItem = $('div', ['statusbar-item']);
-    errorsItem.textContent = '\u2713 0 \u2717 0';
+    errorsItem.textContent = '0 0';
     errorsItem.title = 'No errors, no warnings';
     append(right, errorsItem);
 
@@ -97,8 +100,15 @@ export class StatusbarPart extends Part {
   private _updateLanguageDisplay(): void {
     const progNames: Record<string, string> = { java: 'Java', c: 'C', cpp: 'C++' };
     const humanNames: Record<string, string> = { en: 'EN', es: 'ES' };
-    this._progLangEl.textContent = `\u{1F4DD} ${progNames[this._currentProgLang] || this._currentProgLang}`;
-    this._humanLangEl.textContent = `\u{1F310} ${humanNames[this._currentHumanLang] || this._currentHumanLang}`;
+    const progIcon = createIconElement(iconPencil());
+    this._progLangEl.textContent = '';
+    append(this._progLangEl, progIcon);
+    this._progLangEl.append(` ${progNames[this._currentProgLang] || this._currentProgLang}`);
+
+    const humanIcon = createIconElement(iconGlobe());
+    this._humanLangEl.textContent = '';
+    append(this._humanLangEl, humanIcon);
+    this._humanLangEl.append(` ${humanNames[this._currentHumanLang] || this._currentHumanLang}`);
   }
 
   private _cycleProgLang(): void {

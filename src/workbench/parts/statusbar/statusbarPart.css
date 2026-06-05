@@ -36,6 +36,11 @@
   font-size: 12px;
   transition: background-color 0.08s;
 }
+.statusbar-item .svg-icon svg {
+  width: 13px;
+  height: 13px;
+  stroke-width: 1.8;
+}
 
 .statusbar-item:hover {
   background-color: var(--vscode-statusBarItem-hoverBackground);
