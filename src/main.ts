@@ -12,15 +12,24 @@ function main(): void {
 
   registerAllLanguages();
 
-  // Expose API globally for extensions/plugins
   (window as any).HydraCode = {
     LanguageRegistry,
     TranspilerEngine: TranspilerEngine,
     transpiler,
-    languages: {
-      java: { tokens: null, mappings: () => LanguageRegistry.getMappingsForLanguage('java') },
-      c: { tokens: null, mappings: () => LanguageRegistry.getMappingsForLanguage('c') },
-      cpp: { tokens: null, mappings: () => LanguageRegistry.getMappingsForLanguage('cpp') },
+    get languages(): Record<string, { tokens: null; mappings: () => any[] }> {
+      const allMappings = LanguageRegistry.getAllMappings();
+      const langs: Record<string, any> = {};
+      const seen = new Set<string>();
+      for (const m of allMappings) {
+        if (!seen.has(m.languageId)) {
+          seen.add(m.languageId);
+          langs[m.languageId] = {
+            tokens: null,
+            mappings: () => LanguageRegistry.getMappingsForLanguage(m.languageId),
+          };
+        }
+      }
+      return langs;
     },
   };
 

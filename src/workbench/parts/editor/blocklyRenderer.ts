@@ -61,6 +61,18 @@ const BLOCK_DEFS = [
     tooltip: 'Bucle mientras',
   },
   {
+    type: 'hc_hacer',
+    message0: 'hacer',
+    message1: '%1',
+    args1: [{ type: 'input_statement', name: 'DO' }],
+    message2: 'mientras (%1)',
+    args2: [{ type: 'field_input', name: 'COND', text: 'condición' }],
+    previousStatement: null,
+    nextStatement: null,
+    colour: 35,
+    tooltip: 'Bucle hacer / mientras',
+  },
+  {
     type: 'hc_para',
     message0: 'para %1',
     args0: [{ type: 'field_input', name: 'INIT', text: 'entero i = 0; i < 10; i++' }],
@@ -176,6 +188,15 @@ const BLOCK_DEFS = [
     colour: 230,
   },
   {
+    type: 'hc_corto',
+    message0: 'corto %1',
+    args0: [{ type: 'field_input', name: 'VAR', text: 'nombre = 0' }],
+    previousStatement: null,
+    nextStatement: null,
+    colour: 230,
+    tooltip: 'Variable entera corta',
+  },
+  {
     type: 'hc_var',
     message0: 'var %1',
     args0: [{ type: 'field_input', name: 'VAR', text: 'nombre = valor' }],
@@ -219,6 +240,7 @@ const TOOLBOX_XML = `
   <category name="Control" colour="35">
     <block type="hc_si"/>
     <block type="hc_mientras"/>
+    <block type="hc_hacer"/>
     <block type="hc_para"/>
     <block type="hc_cambiar"/>
   </category>
@@ -229,6 +251,7 @@ const TOOLBOX_XML = `
     <block type="hc_doble"/>
     <block type="hc_flotante"/>
     <block type="hc_largo"/>
+    <block type="hc_corto"/>
     <block type="hc_caracter"/>
     <block type="hc_var"/>
   </category>
@@ -317,6 +340,12 @@ generator.forBlock['hc_mientras'] = function (block, gen) {
   return `mientras (${cond}) {\n${body}}\n`;
 };
 
+generator.forBlock['hc_hacer'] = function (block, gen) {
+  const body = gen.statementToCode(block, 'DO');
+  const cond = block.getFieldValue('COND');
+  return `hacer {\n${body}} mientras (${cond});\n`;
+};
+
 generator.forBlock['hc_para'] = function (block, gen) {
   const init = block.getFieldValue('INIT');
   const body = gen.statementToCode(block, 'DO');
@@ -364,7 +393,7 @@ generator.forBlock['hc_retornar'] = function (block, gen) {
 };
 
 generator.forBlock['hc_lanzar'] = function (block, gen) {
-  return `lanzar ${block.getFieldValue('EXC')};\n`;
+  return `lanzar nuevo ${block.getFieldValue('EXC')};\n`;
 };
 
 /* ───────────────────────────────────────────────────────────────────────────
@@ -375,24 +404,26 @@ import type { Block } from './blockModel.js';
 
 const BLOCK_TYPE_MAP: Record<string, string> = {
   clase: 'hc_clase', main: 'hc_main', metodo: 'hc_metodo',
-  si: 'hc_si', mientras: 'hc_mientras', para: 'hc_para', cambiar: 'hc_cambiar',
+  si: 'hc_si', mientras: 'hc_mientras', hacer: 'hc_hacer',
+  para: 'hc_para', cambiar: 'hc_cambiar',
   intentar: 'hc_intentar',
   imprimir: 'hc_imprimir', imprimir_error: 'hc_imprimir_error',
   entero: 'hc_entero', cadena: 'hc_cadena', booleano: 'hc_booleano',
   doble: 'hc_doble', flotante: 'hc_flotante', largo: 'hc_largo',
-  caracter: 'hc_caracter', var: 'hc_var',
+  corto: 'hc_corto', caracter: 'hc_caracter', var: 'hc_var',
   retornar: 'hc_retornar', lanzar: 'hc_lanzar',
 };
 
 function blockTypeFieldName(blocklyType: string): string | null {
   const map: Record<string, string> = {
     hc_clase: 'NAME', hc_metodo: 'SIGNATURE',
-    hc_si: 'COND', hc_mientras: 'COND', hc_para: 'INIT', hc_cambiar: 'VAR',
+    hc_si: 'COND', hc_mientras: 'COND', hc_hacer: 'COND',
+    hc_para: 'INIT', hc_cambiar: 'VAR',
     hc_intentar: 'EXC',
     hc_imprimir: 'TEXT', hc_imprimir_error: 'TEXT',
     hc_entero: 'VAR', hc_cadena: 'VAR', hc_booleano: 'VAR',
     hc_doble: 'VAR', hc_flotante: 'VAR', hc_largo: 'VAR',
-    hc_caracter: 'VAR', hc_var: 'VAR',
+    hc_corto: 'VAR', hc_caracter: 'VAR', hc_var: 'VAR',
     hc_retornar: 'VALUE', hc_lanzar: 'EXC',
   };
   return map[blocklyType] ?? null;
@@ -401,7 +432,8 @@ function blockTypeFieldName(blocklyType: string): string | null {
 function statementName(blocklyType: string): string | null {
   const map: Record<string, string> = {
     hc_clase: 'BODY', hc_main: 'BODY', hc_metodo: 'BODY',
-    hc_si: 'DO', hc_mientras: 'DO', hc_para: 'DO', hc_cambiar: 'DO',
+    hc_si: 'DO', hc_mientras: 'DO', hc_hacer: 'DO',
+    hc_para: 'DO', hc_cambiar: 'DO',
     hc_intentar: 'DO',
   };
   return map[blocklyType] ?? null;

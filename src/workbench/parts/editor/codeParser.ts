@@ -1,6 +1,49 @@
 import type { Block, BlockKind, BlockType } from './blockModel.js';
 import { makeBlock } from './blockModel.js';
 
+// ── Language-neutral keyword maps ──────────────────────────────────────────
+
+const KW_CLASS    = /^(?:(?:publico|privado|protegido|public|private|protected)\s+)?(?:clase|class)\s+/;
+const KW_IF       = /^(?:si|if)\s*\(/;
+const KW_ELIF     = /^(?:sino_si|elif)\b/;
+const KW_ELSE     = /^}\s*(?:sino|else)\s*\{/;
+const KW_WHILE    = /^(?:mientras|while)\s*\(/;
+const KW_DO       = /^(?:hacer|do)\s*\{/;
+const KW_FOR      = /^(?:para|for)\s*\(/;
+const KW_SWITCH   = /^(?:cambiar|switch)\s*\(/;
+const KW_TRY      = /^(?:intentar|try)\s*\{/;
+const KW_CATCH    = /^}\s*(?:capturar|catch)\s*\(/;
+const KW_PRINT    = /^(?:sistema\.imprimir|System\.out\.println|print|lprinft|cout\s*<<)\s*\(/;
+const KW_RETURN   = /^(?:retornar|return)\b/;
+const KW_THROW    = /^(?:lanzar|throw)\b/;
+const KW_MAIN     = /(?:publico\s+estatico\s+vacio\s+principal|public\s+static\s+void\s+main|(?:int|void)\s+main)\s*\(/;
+const KW_METHOD   = /^(?:publico|privado|protegido|public|private|protected)\s+/;
+
+// Detect Python-style (no braces, indentation-based)
+function isPythonIndent(lines: string[], startIdx: number): boolean {
+  const t = lines[startIdx]?.trim() ?? '';
+  if (/:\s*$/.test(t) && !t.includes('{')) return true;
+  return false;
+}
+
+function extractPythonBlock(lines: string[], startIdx: number, baseIndent: number): { inner: string[]; consumed: number } {
+  const inner: string[] = [];
+  let consumed = 1;
+  for (let i = startIdx + 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.trim() === '' || /^\s*#/.test(line)) { consumed++; continue; }
+    const indent = line.search(/\S/);
+    if (indent <= baseIndent) break;
+    inner.push(line);
+    consumed++;
+  }
+  return { inner, consumed };
+}
+
+function countIndent(line: string): number {
+  return line.search(/\S/);
+}
+
 // ── Extract a brace-delimited block from lines ────────────────────────────
 
 function extractBraceBlock(lines: string[], startIdx: number): { inner: string[]; consumed: number } {
@@ -25,8 +68,28 @@ function extractBraceBlock(lines: string[], startIdx: number): { inner: string[]
 // ── Extract parameter string from a line ─────────────────────────────────
 
 function extractParens(line: string): string {
-  const m = line.match(/\((.+?)(?:\)\s*\{|\)\s*$)/s);
+  const m = line.match(/\((.+?)(?:\)\s*\{|\)\s*:\s*$|\)\s*$)/s);
   return m ? m[1].trim() : '';
+}
+
+// ── Detect if line is a function/method definition (not class, not main) ──
+
+function isMethodDef(t: string): boolean {
+  return KW_METHOD.test(t) && /\w+\s*\(/.test(t) && (t.includes('{') || /:\s*$/.test(t));
+}
+
+/** Matches a C/C++/Java bare function like `int main(`, `void foo(`, `string bar(` */
+function isBareFuncDef(t: string): boolean {
+  // word (maybe pointer) then word then (...
+  return /^\w+(?:\s*[*&])?\s+\w+\s*\(/.test(t) && t.includes('{') && !t.includes(';');
+}
+
+function isPythonFuncDef(t: string): boolean {
+  return /^def\s+\w+\s*\(/.test(t) && /:\s*$/.test(t);
+}
+
+function isPythonClassDef(t: string): boolean {
+  return /^class\s+\w+/.test(t) && /:\s*$/.test(t);
 }
 
 // ── Parse code string into a Block tree ──────────────────────────────────
@@ -60,95 +123,156 @@ function parseLines(lines: string[]): Block[] {
 function parseOneLine(lines: string[], i: number): { block: Block; consumed: number } | null {
   const t = lines[i].trim();
 
-  // ── clase ──────────────────────────────────────────────────────────────
-  if (/^(?:publico\s+)?(?:privado\s+)?clase\s+/.test(t) && t.includes('{')) {
-    const nameMatch = t.match(/clase\s+(\w+)/);
+  // ── Class (clase / class / Python class) ───────────────────────────────
+  if (KW_CLASS.test(t) && (t.includes('{') || isPythonIndent(lines, i))) {
+    const nameMatch = t.match(/(?:clase|class)\s+(\w+)/);
     const name = nameMatch?.[1] ?? 'NombreClase';
-    const { inner, consumed } = extractBraceBlock(lines, i);
+    const hasBraces = t.includes('{');
+    const { inner, consumed } = hasBraces
+      ? extractBraceBlock(lines, i)
+      : extractPythonBlock(lines, i, countIndent(lines[i]));
     return {
       block: makeBlock('hat', 'clase', 'clase', name, '#9966ff', parseLines(inner)),
       consumed,
     };
   }
 
-  // ── main() ─────────────────────────────────────────────────────────────
-  if (/publico\s+estatico\s+vacio\s+principal/.test(t) && t.includes('{')) {
-    const { inner, consumed } = extractBraceBlock(lines, i);
+  // ── Python class ─────────────────────────────────────────────────────
+  if (isPythonClassDef(t)) {
+    const nameMatch = t.match(/class\s+(\w+)/);
+    const name = nameMatch?.[1] ?? 'NombreClase';
+    const { inner, consumed } = extractPythonBlock(lines, i, countIndent(lines[i]));
     return {
-      block: makeBlock('hat', 'main', 'main()', '', '#ff8c1a', parseLines(inner)),
+      block: makeBlock('hat', 'clase', 'clase', name, '#9966ff', parseLines(inner)),
       consumed,
     };
   }
 
-  // ── método público/privado (but NOT main, not clase) ───────────────────
-  if (/^(?:publico|privado|protegido)/.test(t) && /\w+\s*\(/.test(t) && t.includes('{')) {
-    const { inner, consumed } = extractBraceBlock(lines, i);
-    const sig = t.replace(/\{.*/, '').trim();
+  // ── Python function def ──────────────────────────────────────────────
+  if (isPythonFuncDef(t)) {
+    const { inner, consumed } = extractPythonBlock(lines, i, countIndent(lines[i]));
+    const sig = t.replace(/:\s*$/, '').trim();
     return {
       block: makeBlock('hat', 'metodo', 'método', sig, '#9966ff', parseLines(inner)),
       consumed,
     };
   }
 
-  // ── si / si+sino ───────────────────────────────────────────────────────
-  if (/^si\s*\(/.test(t) && t.includes('{')) {
-    const params = extractParens(t);
-    const { inner: ifInner, consumed: ifConsumed } = extractBraceBlock(lines, i);
-    let children = parseLines(ifInner);
-    let elseChildren: Block[] = [];
-    let totalConsumed = ifConsumed;
-
-    // Check if next non-empty line is "} sino {"
-    const nextIdx = i + ifConsumed;
-    const nextTrim = lines[nextIdx]?.trim() ?? '';
-    if (/^}\s*sino\s*\{/.test(nextTrim) || nextTrim === '} sino {') {
-      // The } sino { is already consumed in the brace block (depth tracking)
-      // Actually we need to re-examine: extractBraceBlock stops at depth=0
-      // The `} sino {` keeps depth at 1 so it's already inside.
-      // Let's check if our snippet already contains 'sino'
-    }
-
-    // Re-examine: if the extracted inner is from a block that includes } sino {
-    // we need to split it properly. Let's instead extract IF and ELSE separately.
-
-    // Re-do: manually track si/sino as one compound block
-    const compound = extractSiSino(lines, i);
-    if (compound) {
-      return {
-        block: makeBlock('c-if', 'si', compound.hasSino ? 'si / sino' : 'si', params, '#ffab19',
-          parseLines(compound.ifBody), compound.hasSino ? parseLines(compound.elseBody) : []),
-        consumed: compound.consumed,
-      };
-    }
-
+  // ── main() ─────────────────────────────────────────────────────────────
+  if (KW_MAIN.test(t) && (t.includes('{') || isPythonIndent(lines, i))) {
+    const hasBraces = t.includes('{');
+    const { inner, consumed } = hasBraces
+      ? extractBraceBlock(lines, i)
+      : extractPythonBlock(lines, i, countIndent(lines[i]));
     return {
-      block: makeBlock('c-if', 'si', 'si', params, '#ffab19', children, elseChildren),
-      consumed: totalConsumed,
+      block: makeBlock('hat', 'main', 'main()', '', '#ff8c1a', parseLines(inner)),
+      consumed,
     };
   }
 
-  // ── para ───────────────────────────────────────────────────────────────
-  if (/^para\s*\(/.test(t) && t.includes('{')) {
+  // ── method def ─────────────────────────────────────────────────────────
+  if ((isMethodDef(t) || isBareFuncDef(t) || isPythonFuncDef(t)) && !KW_MAIN.test(t)) {
+    const hasBraces = t.includes('{');
+    const { inner, consumed } = hasBraces
+      ? extractBraceBlock(lines, i)
+      : extractPythonBlock(lines, i, countIndent(lines[i]));
+    const sig = hasBraces ? t.replace(/\{.*/, '').trim() : t.replace(/:\s*$/, '').trim();
+    return {
+      block: makeBlock('hat', 'metodo', 'método', sig, '#9966ff', parseLines(inner)),
+      consumed,
+    };
+  }
+
+  // ── if / si (handle both braces and Python indent) ───────────────────
+  if (KW_IF.test(t) && (t.includes('{') || isPythonIndent(lines, i))) {
     const params = extractParens(t);
-    const { inner, consumed } = extractBraceBlock(lines, i);
+    const hasBraces = t.includes('{');
+
+    if (hasBraces) {
+      const compound = extractSiSino(lines, i);
+      if (compound) {
+        return {
+          block: makeBlock('c-if', 'si', compound.hasSino ? 'si / sino' : 'si', params, '#ffab19',
+            parseLines(compound.ifBody), compound.hasSino ? parseLines(compound.elseBody) : []),
+          consumed: compound.consumed,
+        };
+      }
+      const { inner, consumed } = extractBraceBlock(lines, i);
+      return {
+        block: makeBlock('c-if', 'si', 'si', params, '#ffab19', parseLines(inner), []),
+        consumed,
+      };
+    } else {
+      // Python indent-based
+      const baseIndent = countIndent(lines[i]);
+      const { inner: ifInner, consumed: ifConsumed } = extractPythonBlock(lines, i, baseIndent);
+      let elseChildren: Block[] = [];
+      let totalConsumed = ifConsumed;
+      // Check for elif/else at next line
+      const nextIdx = i + ifConsumed;
+      if (nextIdx < lines.length) {
+        const nextTrim = lines[nextIdx].trim();
+        if (/^(?:sino_si|elif)\s/.test(nextTrim)) {
+          // Treat as else-if: parse as nested if
+          const elifResult = parseOneLine(lines, nextIdx);
+          if (elifResult) {
+            elseChildren = [elifResult.block];
+            totalConsumed += elifResult.consumed;
+          }
+        } else if (nextTrim === 'sino:' || nextTrim === 'else:') {
+          const { inner: elseInner, consumed: elseConsumed } = extractPythonBlock(lines, nextIdx, baseIndent);
+          elseChildren = parseLines(elseInner);
+          totalConsumed += elseConsumed;
+        }
+      }
+      return {
+        block: makeBlock('c-if', 'si', 'si', params, '#ffab19',
+          parseLines(ifInner), elseChildren),
+        consumed: totalConsumed,
+      };
+    }
+  }
+
+  // ── for / para ─────────────────────────────────────────────────────────
+  if (KW_FOR.test(t) && (t.includes('{') || isPythonIndent(lines, i))) {
+    const params = extractParens(t);
+    const hasBraces = t.includes('{');
+    const { inner, consumed } = hasBraces
+      ? extractBraceBlock(lines, i)
+      : extractPythonBlock(lines, i, countIndent(lines[i]));
     return {
       block: makeBlock('c-loop', 'para', 'para', params, '#ffab19', parseLines(inner)),
       consumed,
     };
   }
 
-  // ── mientras ───────────────────────────────────────────────────────────
-  if (/^mientras\s*\(/.test(t) && t.includes('{')) {
+  // ── while / mientras ─────────────────────────────────────────────────
+  if (KW_WHILE.test(t) && (t.includes('{') || isPythonIndent(lines, i))) {
     const params = extractParens(t);
-    const { inner, consumed } = extractBraceBlock(lines, i);
+    const hasBraces = t.includes('{');
+    const { inner, consumed } = hasBraces
+      ? extractBraceBlock(lines, i)
+      : extractPythonBlock(lines, i, countIndent(lines[i]));
     return {
       block: makeBlock('c-loop', 'mientras', 'mientras', params, '#ffab19', parseLines(inner)),
       consumed,
     };
   }
 
-  // ── cambiar ────────────────────────────────────────────────────────────
-  if (/^cambiar\s*\(/.test(t) && t.includes('{')) {
+  // ── do / hacer (do-while) ───────────────────────────────────────────
+  if (KW_DO.test(t)) {
+    const { inner, consumed } = extractBraceBlock(lines, i);
+    const lastLine = lines[i + consumed - 1]?.trim() ?? '';
+    const m = lastLine.match(/(?:mientras|while)\s*\((.+?)\)\s*;?\s*$/);
+    const cond = m ? m[1].trim() : 'condición';
+    return {
+      block: makeBlock('c-loop', 'hacer', 'hacer / mientras', cond, '#ffab19', parseLines(inner)),
+      consumed,
+    };
+  }
+
+  // ── switch / cambiar ────────────────────────────────────────────────
+  if (KW_SWITCH.test(t) && t.includes('{')) {
     const params = extractParens(t);
     const { inner, consumed } = extractBraceBlock(lines, i);
     return {
@@ -157,8 +281,8 @@ function parseOneLine(lines: string[], i: number): { block: Block; consumed: num
     };
   }
 
-  // ── intentar ───────────────────────────────────────────────────────────
-  if (/^intentar\s*\{/.test(t)) {
+  // ── try / intentar ─────────────────────────────────────────────────
+  if (KW_TRY.test(t)) {
     const tryResult = extractTryCatch(lines, i);
     if (tryResult) {
       return {
@@ -169,30 +293,90 @@ function parseOneLine(lines: string[], i: number): { block: Block; consumed: num
     }
   }
 
-  // ── sistema.imprimir ───────────────────────────────────────────────────
+  // ── Python try/except ──────────────────────────────────────────────
+  if (/^try\s*:\s*$/.test(t)) {
+    const baseIndent = countIndent(lines[i]);
+    const { inner: tryInner, consumed: tryConsumed } = extractPythonBlock(lines, i, baseIndent);
+    let catchBody: string[] = [];
+    let catchParam = 'excepcion e';
+    let totalConsumed = tryConsumed;
+    const nextIdx = i + tryConsumed;
+    if (nextIdx < lines.length) {
+      const nextTrim = lines[nextIdx].trim();
+      const excMatch = nextTrim.match(/^except\s+(\w+(?:\s+as\s+\w+)?)\s*:\s*$/);
+      if (excMatch) {
+        catchParam = excMatch[1];
+        const { inner: cBody, consumed: cConsumed } = extractPythonBlock(lines, nextIdx, countIndent(lines[nextIdx]));
+        catchBody = cBody;
+        totalConsumed += cConsumed;
+      } else if (/^except\s*:\s*$/.test(nextTrim)) {
+        catchParam = 'Exception';
+        const { inner: cBody, consumed: cConsumed } = extractPythonBlock(lines, nextIdx, countIndent(lines[nextIdx]));
+        catchBody = cBody;
+        totalConsumed += cConsumed;
+      }
+    }
+    return {
+      block: makeBlock('c-try', 'intentar', 'intentar/capturar', catchParam, '#ff6680',
+        parseLines(tryInner), parseLines(catchBody)),
+      consumed: totalConsumed,
+    };
+  }
+
+  // ── Print / sistema.imprimir / cout ────────────────────────────────
   if (/^sistema\.imprimir\s*\(/.test(t)) {
     const m = t.match(/sistema\.imprimir\s*\((.+)\)\s*;?$/s);
     return { block: makeBlock('stack', 'imprimir', 'imprimir', m?.[1].trim() ?? '', '#59c059'), consumed: 1 };
   }
+  if (/^System\.out\.println\s*\(/.test(t) || /^System\.out\.print\s*\(/.test(t)) {
+    const m = t.match(/System\.out\.(?:println|print)\s*\((.+)\)\s*;?$/s);
+    return { block: makeBlock('stack', 'imprimir', 'imprimir', m?.[1].trim() ?? '', '#59c059'), consumed: 1 };
+  }
+  if (/^print\s*\(/.test(t)) {
+    const m = t.match(/print\s*\((.+)\)\s*;?$/s);
+    return { block: makeBlock('stack', 'imprimir', 'imprimir', m?.[1].trim() ?? '', '#59c059'), consumed: 1 };
+  }
+  if (/^printf\s*\(/.test(t)) {
+    const m = t.match(/printf\s*\((.+)\)\s*;?$/s);
+    return { block: makeBlock('stack', 'imprimir', 'imprimir', m?.[1].trim() ?? '', '#59c059'), consumed: 1 };
+  }
+  if (/^cout\s*<</.test(t)) {
+    const val = t.replace(/^cout\s*<<\s*/, '').replace(/;\s*$/, '').trim();
+    return { block: makeBlock('stack', 'imprimir', 'imprimir', val, '#59c059'), consumed: 1 };
+  }
 
-  // ── retornar ───────────────────────────────────────────────────────────
-  if (/^retornar\b/.test(t)) {
-    const val = t.replace(/^retornar\s*/, '').replace(/;$/, '').trim();
+  // ── return / retornar ────────────────────────────────────────────────
+  if (KW_RETURN.test(t)) {
+    const val = t.replace(/^(?:retornar|return)\s*/, '').replace(/;$/, '').trim();
     return { block: makeBlock('stack', 'retornar', 'retornar', val, '#9966ff'), consumed: 1 };
   }
 
-  // ── lanzar ─────────────────────────────────────────────────────────────
-  if (/^lanzar\b/.test(t)) {
-    const val = t.replace(/^lanzar\s+(?:nuevo\s+)?/, '').replace(/;$/, '').trim();
+  // ── throw / lanzar ──────────────────────────────────────────────────
+  if (KW_THROW.test(t)) {
+    const val = t.replace(/^(?:lanzar|throw)\s+(?:nuevo|new\s+)?/, '').replace(/;$/, '').trim();
     return { block: makeBlock('stack', 'lanzar', 'lanzar', val, '#ff6680'), consumed: 1 };
   }
 
   // ── variable declaration ───────────────────────────────────────────────
-  const varTypes = ['entero','cadena','booleano','doble','flotante','largo','corto','caracter','var'];
+  const varTypes: Array<{ es: string; en: string[] }> = [
+    { es: 'entero',    en: ['int', 'Int'] },
+    { es: 'cadena',    en: ['String', 'string', 'str'] },
+    { es: 'booleano',  en: ['boolean', 'bool'] },
+    { es: 'doble',     en: ['double'] },
+    { es: 'flotante',  en: ['float'] },
+    { es: 'largo',     en: ['long'] },
+    { es: 'corto',     en: ['short'] },
+    { es: 'caracter',  en: ['char'] },
+    { es: 'var',       en: ['var', 'auto'] },
+  ];
   for (const vt of varTypes) {
-    if (new RegExp(`^${vt}\\s+`).test(t)) {
-      const params = t.replace(new RegExp(`^${vt}\\s+`), '').replace(/;$/, '').trim();
-      return { block: makeBlock('stack', vt as BlockType, vt, params, '#4c97ff'), consumed: 1 };
+    const allKeywords = [vt.es, ...vt.en];
+    for (const kw of allKeywords) {
+      const regex = new RegExp(`^${kw}\\s+`);
+      if (regex.test(t) && !t.includes('(') && !t.includes('{')) {
+        const params = t.replace(regex, '').replace(/;$/, '').trim();
+        return { block: makeBlock('stack', vt.es as BlockType, vt.es, params, '#4c97ff'), consumed: 1 };
+      }
     }
   }
 
@@ -228,20 +412,17 @@ function extractSiSino(lines: string[], startIdx: number): {
     }
   }
 
-  // Check if the last line is "} sino {" or if the next line has "sino"
+  // Check if the last line is "} sino {" or "} else {" or if the next line has it
   const lastLine = allLines[allLines.length - 1]?.trim() ?? '';
-  if (lastLine.includes('sino') && lastLine.includes('{')) {
-    // The sino block is included in our extraction — split it
-    const closingBraceIdx = allLines.findIndex((l, idx) => idx > 0 && l.trim().match(/^}\s*sino\s*\{/));
+  if ((lastLine.includes('sino') || lastLine.includes('else')) && lastLine.includes('{')) {
+    const closingBraceIdx = allLines.findIndex((l, idx) => idx > 0 && l.trim().match(/^}\s*(?:sino|else)\s*\{/));
     if (closingBraceIdx !== -1) {
       const ifBody = allLines.slice(1, closingBraceIdx);
-      // Now extract the else body
       const remaining = lines.slice(startIdx + allLines.length - (allLines.length - closingBraceIdx - 1));
-      // This gets complex. Let's do a cleaner approach.
     }
   }
 
-  // Simpler: find "} sino {" as a separator
+  // Find "} sino {" or "} else {" as a separator
   let sinoIdx = -1;
   let elseDepth = 0;
   const processedLines: string[] = [];
@@ -256,9 +437,7 @@ function extractSiSino(lines: string[], startIdx: number): {
       if (ch === '}') elseDepth--;
     }
 
-    // If we hit depth=0 on a line that ends with '{' (like "} sino {"), mark sino position
-    // Actually: "} sino {" transitions: } → depth-1, { → depth+1, net: depth unchanged
-    if (trimLine.match(/^}\s*sino\s*\{$/) && elseDepth === 1 && processedLines.length > 1) {
+    if (trimLine.match(/^}\s*(?:sino|else)\s*\{$/) && elseDepth === 1 && processedLines.length > 1) {
       sinoIdx = processedLines.length - 1;
     }
 
@@ -300,8 +479,8 @@ function extractTryCatch(lines: string[], startIdx: number): {
       if (ch === '}') depth--;
     }
 
-    if (trimLine.match(/^}\s*capturar\s*\(/) && depth === 1) {
-      const m = trimLine.match(/capturar\s*\((.+?)\)/);
+    if (trimLine.match(/^}\s*(?:capturar|catch)\s*\(/) && depth === 1) {
+      const m = trimLine.match(/(?:capturar|catch)\s*\((.+?)\)/);
       if (m) catchParam = m[1].trim();
       catchStart = collected.length - 1;
     }

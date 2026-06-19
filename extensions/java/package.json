@@ -1,0 +1,36 @@
+{
+  "name": "java",
+  "displayName": "Java Language Basics",
+  "description": "Provides snippets, syntax highlighting, bracket matching and folding in Java files.",
+  "version": "10.0.0",
+  "publisher": "vscode",
+  "engines": {
+    "vscode": "*"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "java",
+        "extensions": [
+          ".java",
+          ".jav"
+        ],
+        "aliases": [
+          "Java",
+          "java"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "java",
+        "scopeName": "source.java",
+        "path": "./syntaxes/java.tmLanguage.json"
+      }
+    ]
+  }
+}

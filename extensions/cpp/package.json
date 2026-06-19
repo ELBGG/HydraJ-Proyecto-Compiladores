@@ -1,0 +1,83 @@
+{
+  "name": "cpp",
+  "displayName": "C/C++ Language Basics",
+  "description": "Provides snippets, syntax highlighting, bracket matching and folding in C/C++ files.",
+  "version": "10.0.0",
+  "publisher": "vscode",
+  "engines": {
+    "vscode": "*"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "c",
+        "extensions": [
+          ".c",
+          ".i"
+        ],
+        "aliases": [
+          "C",
+          "c"
+        ],
+        "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "cpp",
+        "extensions": [
+          ".cpp",
+          ".cppm",
+          ".cc",
+          ".ccm",
+          ".cxx",
+          ".cxxm",
+          ".c++",
+          ".c++m",
+          ".hpp",
+          ".hh",
+          ".hxx",
+          ".h++",
+          ".h",
+          ".ii",
+          ".ino",
+          ".inl",
+          ".ipp",
+          ".ixx",
+          ".tpp",
+          ".txx",
+          ".hpp.in",
+          ".h.in"
+        ],
+        "aliases": [
+          "C++",
+          "Cpp",
+          "cpp"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "c",
+        "scopeName": "source.c",
+        "path": "./syntaxes/c.tmLanguage.json"
+      },
+      {
+        "language": "cpp",
+        "scopeName": "source.cpp.embedded.macro",
+        "path": "./syntaxes/cpp.embedded.macro.tmLanguage.json"
+      },
+      {
+        "language": "cpp",
+        "scopeName": "source.cpp",
+        "path": "./syntaxes/cpp.tmLanguage.json"
+      },
+      {
+        "scopeName": "source.c.platform",
+        "path": "./syntaxes/platform.tmLanguage.json"
+      }
+    ]
+  }
+}

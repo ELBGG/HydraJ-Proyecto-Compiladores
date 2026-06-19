@@ -5,6 +5,11 @@ import { Emitter } from '../../../base/common/event.js';
 import type { EditorPart } from '../editor/editorPart.js';
 import { STTEngine } from './sttEngine.js';
 import { STTPanel } from './sttPanel.js';
+import { ExtensionRegistry } from './extensionRegistry.js';
+import { ExtensionStore } from './extensionStore.js';
+import { ExtensionsPanel } from './extensionsPanel.js';
+import { RunEngine } from './runEngine.js';
+import { RunPanel } from './runPanel.js';
 import { iconFolder, iconFolderOpen, iconFile, iconFileCode, createIconElement } from '../../../base/browser/icons.js';
 
 interface DirEntry {
@@ -22,6 +27,9 @@ export class SidebarPart extends Part {
   private _editor: EditorPart | null = null;
   private _sttEngine: STTEngine | null = null;
   private _sttPanel: STTPanel | null = null;
+  private _extensionRegistry: ExtensionRegistry | null = null;
+  private _runEngine: RunEngine | null = null;
+  private _runPanel: RunPanel | null = null;
 
   private readonly _onFileOpen = this._register(new Emitter<{ path: string; label: string }>());
   readonly onFileOpen = this._onFileOpen.event;
@@ -33,6 +41,14 @@ export class SidebarPart extends Part {
   setEditor(editor: EditorPart): void {
     this._editor = editor;
     this._sttPanel?.setEditor(editor);
+  }
+
+  setExtensionRegistry(registry: ExtensionRegistry): void {
+    this._extensionRegistry = registry;
+  }
+
+  setRunEngine(engine: RunEngine): void {
+    this._runEngine = engine;
   }
 
   protected createContentArea(parent: HTMLElement): HTMLElement {
@@ -51,8 +67,8 @@ export class SidebarPart extends Part {
       case 'search':          this._renderSearch();      break;
       case 'blocks':          this._renderBlocks();      break;
       case 'source-control':  this._renderPlaceholder('SOURCE CONTROL', 'No changes detected.'); break;
-      case 'debug':           this._renderPlaceholder('RUN AND DEBUG', 'No launch configuration.'); break;
-      case 'extensions':      this._renderPlaceholder('EXTENSIONS', 'No extensions installed.'); break;
+      case 'debug':           this._renderDebug();       break;
+      case 'extensions':      this._renderExtensions(); break;
       case 'stt':             this._renderSTT();         break;
       default:                this._renderPlaceholder(id.toUpperCase(), ''); break;
     }
@@ -87,6 +103,21 @@ export class SidebarPart extends Part {
     const msg = $('div', ['sidebar-placeholder', 'blocks-placeholder']);
     msg.textContent = 'Los bloques están disponibles en el toolbox de Blockly dentro del editor.';
     append(this._contentEl, msg);
+  }
+
+  // ── Run & Debug ───────────────────────────────────────────────────────────
+
+  private _renderDebug(): void {
+    if (!this._contentEl || !this._runEngine || !this._editor) return;
+    this._runPanel?.dispose();
+    this._runPanel = new RunPanel(this._contentEl, this._runEngine, this._editor);
+  }
+
+  // ── Extensions ────────────────────────────────────────────────────────────
+
+  private _renderExtensions(): void {
+    if (!this._contentEl || !this._extensionRegistry) return;
+    new ExtensionsPanel(this._contentEl, this._extensionRegistry, new ExtensionStore());
   }
 
   // ── Explorer ───────────────────────────────────────────────────────────────

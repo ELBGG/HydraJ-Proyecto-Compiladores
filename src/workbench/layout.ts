@@ -16,6 +16,9 @@ export class Layout extends Disposable {
   private _statusBarContainer: HTMLElement;
   private _resizeListeners = new DisposableStore();
   private _sidebarVisible = true;
+  private _panelVisible = false;
+  private _panelHeight = 180;
+  private _resizeHandle: HTMLElement | null = null;
 
   private readonly _onDidChange = this._register(new Emitter<void>());
   readonly onDidChange = this._onDidChange.event;
@@ -38,6 +41,11 @@ export class Layout extends Disposable {
 
     this._bodyContainer.appendChild(this._mainContainer);
     this._bodyContainer.appendChild(this._panelContainer);
+
+    // Resize handle between main and panel
+    this._resizeHandle = $('div', ['panel-resize-handle']);
+    this._bodyContainer.insertBefore(this._resizeHandle, this._panelContainer);
+    this._setupResizeHandle();
 
     this._register(
       addDisposableListener(window, 'resize', () => this._layoutParts()),
@@ -65,6 +73,54 @@ export class Layout extends Disposable {
     this._layoutParts();
   }
 
+  isPanelVisible(): boolean { return this._panelVisible; }
+
+  showPanel(): void {
+    this._panelVisible = true;
+    if (this._resizeHandle) this._resizeHandle.style.display = '';
+    this._layoutParts();
+  }
+
+  hidePanel(): void {
+    this._panelVisible = false;
+    if (this._resizeHandle) this._resizeHandle.style.display = 'none';
+    this._layoutParts();
+  }
+
+  togglePanel(): void {
+    if (this._panelVisible) this.hidePanel();
+    else this.showPanel();
+  }
+
+  private _setupResizeHandle(): void {
+    if (!this._resizeHandle) return;
+    let dragging = false;
+    let startY = 0;
+    let startHeight = 0;
+
+    this._resizeHandle.addEventListener('mousedown', (e) => {
+      dragging = true;
+      startY = e.clientY;
+      startHeight = this._panelHeight;
+      document.body.style.cursor = 'row-resize';
+      document.body.style.userSelect = 'none';
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!dragging) return;
+      const delta = startY - e.clientY;
+      this._panelHeight = Math.max(80, Math.min(600, startHeight + delta));
+      this._layoutParts();
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (!dragging) return;
+      dragging = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    });
+  }
+
   private _layoutParts(): void {
     const rootSize = getClientArea(this._element);
     if (rootSize.width <= 0 || rootSize.height <= 0) return;
@@ -80,6 +136,9 @@ export class Layout extends Disposable {
     const statusbarHeight = statusbar ? 22 : 0;
     const bodyHeight      = rootSize.height - titlebarHeight - statusbarHeight;
 
+    const panelHeight = this._panelVisible ? this._panelHeight : 0;
+    const mainHeight  = bodyHeight - panelHeight;
+
     const activitybarWidth = activitybar ? 48 : 0;
     const sidebarWidth     = sidebar && this._sidebarVisible
       ? Math.max(170, rootSize.width * 0.2)
@@ -87,10 +146,13 @@ export class Layout extends Disposable {
     const editorWidth = rootSize.width - activitybarWidth - sidebarWidth;
 
     if (titlebar)    titlebar.layout(rootSize.width, titlebarHeight);
-    if (activitybar) activitybar.layout(activitybarWidth, bodyHeight);
-    if (sidebar)     sidebar.layout(sidebarWidth, bodyHeight);
-    if (editor)      editor.layout(editorWidth, bodyHeight);
-    if (panel)       panel.layout(rootSize.width, 0);
+    if (activitybar) activitybar.layout(activitybarWidth, mainHeight);
+    if (sidebar)     sidebar.layout(sidebarWidth, mainHeight);
+    if (editor)      editor.layout(editorWidth, mainHeight);
+    if (panel) {
+      panel.layout(rootSize.width, panelHeight);
+      this._panelContainer.style.display = this._panelVisible ? 'flex' : 'none';
+    }
     if (statusbar)   statusbar.layout(rootSize.width, statusbarHeight);
   }
 

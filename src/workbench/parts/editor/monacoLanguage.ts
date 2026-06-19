@@ -1,66 +1,44 @@
 import * as monaco from 'monaco-editor';
 import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
-import type { IHumanLanguageMapping } from '../../../languages/index.js';
+import { LanguageRegistry } from '../../../languages/index.js';
+import { ensureTextMateLanguage } from './textmate/monacoTextmateBridge.js';
+import { waitReady, getScopeForLang } from '../sidebar/extensionLoader.js';
+import { applyTheme } from './textmate/theme.js';
 
-// Monaco web worker — must run before any editor is created
+// Monaco web worker — must run before any editor is created.
 (self as any).MonacoEnvironment = {
   getWorker(_workerId: string, _label: string): Worker {
     return new EditorWorker();
   },
 };
 
-const _registered = new Set<string>();
+// Register Dark+ theme immediately (synchronous — no WASM needed).
+applyTheme();
 
+// These 4 languages have existing HumanLanguageMappings and support Spanish injection.
+const SPANISH_LANGS = new Set(['java', 'c', 'cpp', 'python']);
+
+/** Monaco language ID for the given prog+human language pair.
+ *  Synchronous — safe to call before ensureLanguage resolves. */
 export function getHydraLangId(progLang: string, humanLang: string): string {
   return `hydra-${progLang}-${humanLang}`;
 }
 
-export function ensureHydraLanguage(
-  progLang: string,
-  humanLang: string,
-  mapping: IHumanLanguageMapping,
-): void {
-  const id = getHydraLangId(progLang, humanLang);
-  if (_registered.has(id)) return;
-  _registered.add(id);
+/** Final Monaco language ID: hydra-<prog>-<human> if there's an ES mapping, else progLang. */
+export function getMonacoLangId(progLang: string, humanLang: string): string {
+  if (!progLang) return 'plaintext';
+  const hasMapping = SPANISH_LANGS.has(progLang) && !!LanguageRegistry.getMapping(progLang, humanLang);
+  return hasMapping ? getHydraLangId(progLang, humanLang) : progLang;
+}
 
-  monaco.languages.register({ id });
-
-  const keywords  = Object.keys(mapping.keywords);
-  const modifiers = Object.keys(mapping.modifiers);
-  const types     = Object.keys(mapping.types);
-  const literals  = Object.keys(mapping.literals);
-
-  monaco.languages.setMonarchTokensProvider(id, {
-    keywords,
-    modifiers,
-    types,
-    literals,
-    tokenizer: {
-      root: [
-        [/\/\/.*$/, 'comment'],
-        [/\/\*/, 'comment', '@comment'],
-        [/"([^"\\]|\\.)*"/, 'string'],
-        [/'[^']*'/, 'string'],
-        [/\d+(\.\d+)?([eE][+-]?\d+)?[fFdDlL]?/, 'number'],
-        [/[{}()\[\]]/, 'delimiter.bracket'],
-        [/[;,.]/, 'delimiter'],
-        [/[a-zA-Z_À-ɏ][\wÀ-ɏ]*/, {
-          cases: {
-            '@keywords':  'keyword',
-            '@modifiers': 'keyword.control',
-            '@types':     'type',
-            '@literals':  'constant.language',
-            '@default':   'identifier',
-          },
-        }],
-        [/\s+/, 'white'],
-      ],
-      comment: [
-        [/[^/*]+/, 'comment'],
-        [/\*\//, 'comment', '@pop'],
-        [/[/*]/, 'comment'],
-      ],
-    },
-  } as monaco.languages.IMonarchLanguage);
+/** Registers a TextMate token provider for the given language pair.
+ *  Safe to call multiple times — no-op on subsequent calls for the same pair. */
+export async function ensureLanguage(progLang: string, humanLang: string): Promise<void> {
+  if (!progLang) return;
+  await waitReady();
+  const scopeName = getScopeForLang(progLang);
+  if (!scopeName) return; // no extension loaded for this language (yet)
+  const useSpanish = SPANISH_LANGS.has(progLang) && !!LanguageRegistry.getMapping(progLang, humanLang);
+  const monacoLangId = useSpanish ? getHydraLangId(progLang, humanLang) : progLang;
+  await ensureTextMateLanguage(monacoLangId, scopeName, useSpanish);
 }

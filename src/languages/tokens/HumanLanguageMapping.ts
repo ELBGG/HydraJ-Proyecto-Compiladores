@@ -6,6 +6,7 @@ export class HumanLanguageMapping implements IHumanLanguageMapping {
   readonly literals: Record<string, string>;
   readonly modifiers: Record<string, string>;
   readonly patterns: IMultiWordPattern[];
+  readonly version?: string;
 
   constructor(
     readonly id: string,
@@ -13,6 +14,7 @@ export class HumanLanguageMapping implements IHumanLanguageMapping {
     readonly nativeName: string,
     readonly languageId: string,
     defs: {
+      version?: string;
       keywords?: Record<string, string>;
       types?: Record<string, string>;
       literals?: Record<string, string>;
@@ -25,5 +27,6 @@ export class HumanLanguageMapping implements IHumanLanguageMapping {
     this.literals = defs.literals ?? {};
     this.modifiers = defs.modifiers ?? {};
     this.patterns = defs.patterns ?? [];
+    this.version = defs.version;
   }
 }

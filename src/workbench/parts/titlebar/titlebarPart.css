@@ -4,6 +4,7 @@
   border-bottom: 1px solid var(--vscode-titleBar-border);
   -webkit-app-region: drag;
   user-select: none;
+  overflow: visible !important;
 }
 
 .titlebar-content {
@@ -33,18 +34,24 @@
   display: flex;
   align-items: center;
   -webkit-app-region: no-drag;
+  overflow: visible;
 }
 
 .menu-item-wrapper {
   position: relative;
+  -webkit-app-region: no-drag;
+  overflow: visible;
 }
 
 .menu-item {
   display: block;
   padding: 4px 8px;
   font-size: 12px;
-  cursor: default;
+  cursor: pointer;
   border-radius: 3px;
+  -webkit-app-region: no-drag;
+  position: relative;
+  z-index: 1001;
 }
 
 .menu-item:hover {
@@ -60,11 +67,12 @@
   background-color: var(--vscode-menu-background, #252526);
   border: 1px solid var(--vscode-menu-border, #454545);
   border-radius: 3px;
-  min-width: 160px;
-  z-index: 1000;
+  min-width: 180px;
+  z-index: 10000;
   flex-direction: column;
   padding: 4px 0;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  -webkit-app-region: no-drag;
 }
 
 .menu-dropdown.open {
@@ -74,8 +82,9 @@
 .menu-dropdown-item {
   padding: 5px 16px;
   font-size: 12px;
-  cursor: default;
+  cursor: pointer;
   white-space: nowrap;
+  -webkit-app-region: no-drag;
 }
 
 .menu-dropdown-item:hover {

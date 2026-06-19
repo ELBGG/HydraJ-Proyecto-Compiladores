@@ -20,8 +20,12 @@
     "wait-on": "^8.0.0"
   },
   "dependencies": {
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
     "blockly": "^12.5.1",
     "monaco-editor": "^0.55.1",
-    "vosk-browser": "^0.0.8"
+    "vosk-browser": "^0.0.8",
+    "vscode-oniguruma": "^2.0.1",
+    "vscode-textmate": "^9.3.2"
   }
 }

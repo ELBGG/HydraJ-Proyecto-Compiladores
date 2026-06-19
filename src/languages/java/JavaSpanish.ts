@@ -6,6 +6,7 @@ export const javaSpanish = new HumanLanguageMapping(
   'Español',
   'java',
   {
+    version: '17',
     modifiers: {
       'publico': 'public',
       'privado': 'private',

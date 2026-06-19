@@ -1,6 +1,7 @@
 const { app, BrowserWindow, Menu, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { execSync } = require('child_process');
 
 const isDev = process.env.NODE_ENV !== 'production' && !app.isPackaged;
 
@@ -190,6 +191,286 @@ ipcMain.handle('app:about', async () => {
     detail: 'Version 0.1.0\nMultilanguage transpiling IDE\n\nSupported languages: Java, C, C++\nHuman languages: Español\n\nBuilt with Electron + Vite + Monaco Editor',
     buttons: ['OK'],
   });
+});
+
+// ── Code execution ───────────────────────────────────────────────────────────
+let _runningProcess = null;
+let _wslChecked = false;
+let _wslAvailable = false;
+
+async function checkWsl() {
+  if (_wslChecked) return _wslAvailable;
+  _wslChecked = true;
+  try {
+    execSync('wsl.exe --version', { timeout: 5000, stdio: 'ignore' });
+    _wslAvailable = true;
+  } catch {
+    _wslAvailable = false;
+  }
+  return _wslAvailable;
+}
+
+ipcMain.handle('run:execute', async (event, { code, language, debug }) => {
+  const { spawn } = require('child_process');
+  const os = require('os');
+
+  if (_runningProcess) {
+    try { _runningProcess.kill(); } catch {}
+    _runningProcess = null;
+  }
+
+  const runDir = path.join(os.tmpdir(), 'hydracode-run');
+  try { await fs.promises.mkdir(runDir, { recursive: true }); } catch {}
+
+  const send = (text, type) => {
+    try { event.sender.send('run:output', { text, type }); } catch {}
+  };
+
+  const attachOutput = (proc) => {
+    proc.stdout.on('data', d => send(d.toString(), 'stdout'));
+    proc.stderr.on('data', d => send(d.toString(), 'stderr'));
+  };
+
+  const execWithTimeout = (proc, timeoutMs = 30000) => new Promise((resolve) => {
+    _runningProcess = proc;
+    proc.on('close', code => { _runningProcess = null; resolve(code); });
+    proc.on('error', (err) => { send(`\nError al iniciar proceso: ${err.message}\n`, 'stderr'); _runningProcess = null; resolve(1); });
+    setTimeout(() => {
+      if (_runningProcess) {
+        try { _runningProcess.kill(); } catch {}
+        _runningProcess = null;
+        send('\n[Tiempo de ejecución excedido (30s)]\n', 'info');
+        resolve(1);
+      }
+    }, timeoutMs);
+  });
+
+  try {
+    // ── Java ──
+    if (language === 'java') {
+      const classMatch = code.match(/(?:public\s+)?class\s+(\w+)/);
+      const className = classMatch ? classMatch[1] : 'Main';
+      const filePath = path.join(runDir, `${className}.java`);
+      await fs.promises.writeFile(filePath, code, 'utf-8');
+
+      const javacArgs = ['-d', runDir];
+      if (debug) javacArgs.unshift('-g');
+      javacArgs.push(filePath);
+
+      send(`Compilando ${className}.java...\n`, 'info');
+      const compiled = await new Promise((resolve) => {
+        const proc = spawn('javac', javacArgs, { cwd: runDir });
+        attachOutput(proc);
+        proc.on('close', code => resolve(code));
+        proc.on('error', (err) => { send(`\nError: javac no encontrado. Asegúrate de tener JDK instalado.\n`, 'stderr'); resolve(1); });
+      });
+
+      if (compiled !== 0) return { exitCode: compiled };
+
+      send(`Ejecutando ${className}...\n\n`, 'info');
+      const javaArgs = ['-cp', runDir];
+      if (debug) javaArgs.unshift('-Xdebug', '-Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=5005');
+      javaArgs.push(className);
+      return { exitCode: await execWithTimeout(spawn('java', javaArgs, { cwd: runDir })) };
+    }
+
+    // ── Python ──
+    if (language === 'python') {
+      const filePath = path.join(runDir, 'main.py');
+      await fs.promises.writeFile(filePath, code, 'utf-8');
+
+      const pyCmd = process.platform === 'win32' ? 'python' : 'python3';
+      const pyArgs = [filePath];
+      if (debug) pyArgs.unshift('-m', 'trace', '--trace');
+      return { exitCode: await execWithTimeout(spawn(pyCmd, pyArgs, { cwd: runDir })) };
+    }
+
+    // ── C (via WSL) ──
+    if (language === 'c' || language === 'cpp') {
+      const hasWsl = await checkWsl();
+      if (!hasWsl) {
+        send('WSL no está instalado. Instala WSL desde https://learn.microsoft.com/windows/wsl/install\n', 'stderr');
+        return { exitCode: 1 };
+      }
+
+      const ext = language === 'c' ? 'c' : 'cpp';
+      const compiler = language === 'c' ? 'gcc' : 'g++';
+      const filePath = path.join(runDir, `main.${ext}`);
+      await fs.promises.writeFile(filePath, code, 'utf-8');
+
+      send(`Compilando con ${compiler} (WSL)...\n`, 'info');
+      const compiled = await new Promise((resolve) => {
+        const proc = spawn('wsl.exe', [compiler, ...(debug ? ['-g'] : []), '-o', 'main', `main.${ext}`], { cwd: runDir, windowsHide: true, shell: false });
+        attachOutput(proc);
+        proc.on('close', code => resolve(code));
+        proc.on('error', () => { send('\nError al ejecutar WSL. Verifica que WSL esté correctamente instalado y tenga gcc/g++.\n', 'stderr'); resolve(1); });
+      });
+
+      if (compiled !== 0) return { exitCode: compiled };
+
+      send('Ejecutando...\n\n', 'info');
+      return { exitCode: await execWithTimeout(spawn('wsl.exe', ['./main'], { cwd: runDir, windowsHide: true })) };
+    }
+
+    // ── Unsupported language ──
+    send(`Lenguaje "${language}" no soportado para ejecución.\n`, 'stderr');
+    return { exitCode: 1 };
+  } catch (err) {
+    send(`\nError interno: ${String(err)}\n`, 'stderr');
+    return { exitCode: 1, error: String(err) };
+  }
+});
+
+ipcMain.handle('run:stop', async () => {
+  if (_runningProcess) {
+    try { _runningProcess.kill(); _runningProcess = null; } catch {}
+    return { success: true };
+  }
+  return { success: false };
+});
+
+// ── Interactive terminal ─────────────────────────────────────────────────────
+const _terminals = new Map();
+
+ipcMain.handle('terminal:create', (event, { id, cwd }) => {
+  try {
+    const { spawn: spawnProc } = require('child_process');
+    const shell = process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/bash');
+    const args  = process.platform === 'win32' ? ['-NoProfile', '-NoLogo'] : ['-i'];
+
+    const child = spawnProc(shell, args, {
+      cwd: cwd || process.env.USERPROFILE || process.env.HOME || '.',
+      env: { ...process.env, TERM: 'xterm-256color', FORCE_COLOR: '1' },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    _terminals.set(id, child);
+
+    child.stdout.on('data', (data) => {
+      try { event.sender.send(`terminal:data:${id}`, data.toString('utf8')); } catch {}
+    });
+    child.stderr.on('data', (data) => {
+      try { event.sender.send(`terminal:data:${id}`, data.toString('utf8')); } catch {}
+    });
+    child.on('exit', (code) => {
+      _terminals.delete(id);
+      try { event.sender.send(`terminal:exit:${id}`, code ?? 0); } catch {}
+    });
+    child.on('error', (err) => {
+      try { event.sender.send(`terminal:data:${id}`, `\r\nError: ${err.message}\r\n`); } catch {}
+    });
+
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+});
+
+ipcMain.handle('terminal:write', (_event, { id, data }) => {
+  const child = _terminals.get(id);
+  if (!child?.stdin?.writable) return { success: false };
+  try { child.stdin.write(data); return { success: true }; } catch { return { success: false }; }
+});
+
+ipcMain.handle('terminal:resize', () => ({ success: true }));
+
+ipcMain.handle('terminal:kill', (_event, { id }) => {
+  const child = _terminals.get(id);
+  if (!child) return { success: false };
+  try { child.kill(); _terminals.delete(id); return { success: true }; } catch { return { success: false }; }
+});
+
+// ── Example mappings ──────────────────────────────────────────────────────────
+ipcMain.handle('extensions:read-example-mapping', async (_event, { filename }) => {
+  try {
+    const filePath = path.join(__dirname, '..', 'examples', 'mappings', filename);
+    const content = await fs.promises.readFile(filePath, 'utf-8');
+    return { success: true, content };
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+});
+
+// ── Extension marketplace ────────────────────────────────────────────────────
+ipcMain.handle('marketplace:query', async (_event, { text }) => {
+  try {
+    const https = require('https');
+    const body = JSON.stringify({
+      filters: [{
+        criteria: [
+          { filterType: 8,  value: 'Microsoft.VisualStudio.Code' },
+          { filterType: 10, value: text || 'popular' },
+        ],
+        pageSize: 20,
+        pageNumber: 1,
+      }],
+      flags: 0x200,
+    });
+
+    const data = await new Promise((resolve, reject) => {
+      const req = https.request({
+        hostname: 'marketplace.visualstudio.com',
+        path: '/_apis/public/gallery/extensionquery',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json;api-version=7.2-preview.1',
+          'Content-Length': Buffer.byteLength(body),
+          'User-Agent': 'HydraCode/1.0',
+        },
+      }, (res) => {
+        const chunks = [];
+        res.on('data', chunk => chunks.push(chunk));
+        res.on('end', () => {
+          try { resolve(JSON.parse(Buffer.concat(chunks).toString())); }
+          catch (e) { reject(e); }
+        });
+        res.on('error', reject);
+      });
+      req.on('error', reject);
+      req.write(body);
+      req.end();
+    });
+
+    const extensions = data?.results?.[0]?.extensions ?? [];
+    return { success: true, extensions };
+  } catch (err) {
+    return { success: false, error: String(err), extensions: [] };
+  }
+});
+
+ipcMain.handle('extensions:save', async (_event, extensions) => {
+  try {
+    const filePath = path.join(app.getPath('userData'), 'hydracode-extensions.json');
+    await fs.promises.writeFile(filePath, JSON.stringify(extensions, null, 2), 'utf-8');
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+});
+
+ipcMain.handle('extensions:load', async () => {
+  try {
+    const filePath = path.join(app.getPath('userData'), 'hydracode-extensions.json');
+    const content = await fs.promises.readFile(filePath, 'utf-8');
+    return { success: true, extensions: JSON.parse(content) };
+  } catch {
+    return { success: true, extensions: [] };
+  }
+});
+
+ipcMain.handle('dialog:open-json', async () => {
+  const result = await dialog.showOpenDialog(win, {
+    properties: ['openFile'],
+    filters: [{ name: 'JSON Files', extensions: ['json'] }],
+  });
+  if (result.canceled || result.filePaths.length === 0) return { canceled: true };
+  try {
+    const content = await fs.promises.readFile(result.filePaths[0], 'utf-8');
+    return { canceled: false, content };
+  } catch (err) {
+    return { canceled: false, error: String(err) };
+  }
 });
 
 // ── App lifecycle ────────────────────────────────────────────────────────────

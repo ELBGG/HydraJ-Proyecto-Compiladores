@@ -10,6 +10,14 @@ import { StatusbarPart } from './parts/statusbar/statusbarPart.js';
 import { applyTheme, vsCodeDark } from './themes/theme.js';
 import { Emitter } from '../base/common/event.js';
 import { Disposable } from '../base/common/lifecycle.js';
+import { ExtensionRegistry } from './parts/sidebar/extensionRegistry.js';
+import { RunEngine } from './parts/sidebar/runEngine.js';
+import {
+  registerJavaLanguages,
+  registerCLanguages,
+  registerCppLanguages,
+  registerPythonLanguages,
+} from '../languages/index.js';
 
 export class Workbench extends Disposable {
   private _layout: Layout;
@@ -18,6 +26,8 @@ export class Workbench extends Disposable {
   private _sidebar: SidebarPart;
   private _editor: EditorPart;
   private _statusbar: StatusbarPart;
+  private _extensionRegistry: ExtensionRegistry;
+  private _runEngine: RunEngine;
 
   private readonly _onDidLayout = this._register(new Emitter<void>());
   readonly onDidLayout = this._onDidLayout.event;
@@ -39,7 +49,46 @@ export class Workbench extends Disposable {
     this._titlebar.setEditor(this._editor);
     this._titlebar.setSidebar(this._sidebar);
     this._titlebar.setLayout(this._layout);
+    this._titlebar.setPanel(panel);
     this._sidebar.setEditor(this._editor);
+
+    // Register Spanish language mappings so TextMate injection grammars can look them up.
+    registerJavaLanguages();
+    registerCLanguages();
+    registerCppLanguages();
+    registerPythonLanguages();
+
+    this._extensionRegistry = this._register(new ExtensionRegistry());
+
+    this._extensionRegistry.onDidInstall(ext => {
+      for (const lang of ext.languages) {
+        this._statusbar.addLanguage(lang.id);
+      }
+    });
+
+    this._extensionRegistry.onDidUninstall(ext => {
+      for (const lang of ext.languages) {
+        this._statusbar.removeLanguage(lang.id);
+      }
+    });
+
+    this._sidebar.setExtensionRegistry(this._extensionRegistry);
+    this._extensionRegistry.loadInstalled();
+
+    // Run engine
+    this._runEngine = this._register(new RunEngine());
+    this._runEngine.onOutput(({ text, type }) => {
+      panel.appendOutput(text, type);
+    });
+    this._runEngine.onStateChange(state => {
+      if (state === 'running') {
+        panel.clearOutput();
+        this._layout.showPanel();
+        panel.activateTab('output');
+      }
+    });
+    this._sidebar.setRunEngine(this._runEngine);
+    this._titlebar.setRunEngine(this._runEngine);
 
     this._registerParts([
       ['titlebar',    this._titlebar],

@@ -12,15 +12,10 @@ export { TranspilerEngine } from './transpiler/TranspilerEngine.js';
 export { LanguageRegistry } from './api/LanguageRegistry.js';
 
 export { javaTokens, javaSpanish, registerJavaLanguages } from './java/index.js';
-export { cTokens, registerCLanguages } from './c/index.js';
-export { cppTokens, registerCppLanguages } from './cpp/index.js';
-
-import { registerJavaLanguages } from './java/index.js';
-import { registerCLanguages } from './c/index.js';
-import { registerCppLanguages } from './cpp/index.js';
+export { cTokens, cSpanish, registerCLanguages } from './c/index.js';
+export { cppTokens, cppSpanish, registerCppLanguages } from './cpp/index.js';
+export { pythonTokens, pythonSpanish, registerPythonLanguages } from './python/index.js';
 
 export function registerAllLanguages(): void {
-  registerJavaLanguages();
-  registerCLanguages();
-  registerCppLanguages();
+  // All languages registered via ExtensionRegistry on startup (pre-installed seed)
 }

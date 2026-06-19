@@ -10,8 +10,17 @@ export class StatusbarPart extends Part {
   private _humanLangEl!: HTMLElement;
   private _transpileStatusEl!: HTMLElement;
 
+  private _progLangs: string[] = ['java'];
   private _currentProgLang = 'java';
   private _currentHumanLang = 'es';
+
+  private static readonly _DISPLAY_NAMES: Record<string, string> = {
+    java: 'Java', c: 'C', cpp: 'C++', python: 'Python',
+    go: 'Go', rust: 'Rust', csharp: 'C#', kotlin: 'Kotlin',
+    typescript: 'TypeScript', javascript: 'JavaScript',
+    ruby: 'Ruby', swift: 'Swift', scala: 'Scala',
+    powershell: 'PowerShell', dart: 'Dart', julia: 'Julia',
+  };
 
   private readonly _onLanguageChange = this._register(new Emitter<{ progLang: string; humanLang: string }>());
   readonly onLanguageChange = this._onLanguageChange.event;
@@ -26,6 +35,23 @@ export class StatusbarPart extends Part {
   setLanguage(progLang: string, humanLang: string): void {
     this._currentProgLang = progLang;
     this._currentHumanLang = humanLang;
+    this._updateLanguageDisplay();
+  }
+
+  addLanguage(lang: string): void {
+    if (!this._progLangs.includes(lang)) {
+      this._progLangs.push(lang);
+      this._updateLanguageDisplay();
+    }
+  }
+
+  removeLanguage(lang: string): void {
+    if (lang === 'java') return;
+    this._progLangs = this._progLangs.filter(l => l !== lang);
+    if (this._currentProgLang === lang) {
+      this._currentProgLang = 'java';
+      this._onLanguageChange.fire({ progLang: 'java', humanLang: this._currentHumanLang });
+    }
     this._updateLanguageDisplay();
   }
 
@@ -98,23 +124,23 @@ export class StatusbarPart extends Part {
   }
 
   private _updateLanguageDisplay(): void {
-    const progNames: Record<string, string> = { java: 'Java', c: 'C', cpp: 'C++' };
+    const displayName = StatusbarPart._DISPLAY_NAMES[this._currentProgLang] ?? this._currentProgLang;
     const humanNames: Record<string, string> = { en: 'EN', es: 'ES' };
     const progIcon = createIconElement(iconPencil());
     this._progLangEl.textContent = '';
     append(this._progLangEl, progIcon);
-    this._progLangEl.append(` ${progNames[this._currentProgLang] || this._currentProgLang}`);
+    this._progLangEl.append(` ${displayName}`);
 
     const humanIcon = createIconElement(iconGlobe());
     this._humanLangEl.textContent = '';
     append(this._humanLangEl, humanIcon);
-    this._humanLangEl.append(` ${humanNames[this._currentHumanLang] || this._currentHumanLang}`);
+    this._humanLangEl.append(` ${humanNames[this._currentHumanLang] ?? this._currentHumanLang}`);
   }
 
   private _cycleProgLang(): void {
-    const langs = ['java', 'cpp', 'c'];
-    const idx = langs.indexOf(this._currentProgLang);
-    this._currentProgLang = langs[(idx + 1) % langs.length];
+    if (this._progLangs.length === 0) return;
+    const idx = this._progLangs.indexOf(this._currentProgLang);
+    this._currentProgLang = this._progLangs[(idx + 1) % this._progLangs.length];
     this._updateLanguageDisplay();
     this._onLanguageChange.fire({ progLang: this._currentProgLang, humanLang: this._currentHumanLang });
   }

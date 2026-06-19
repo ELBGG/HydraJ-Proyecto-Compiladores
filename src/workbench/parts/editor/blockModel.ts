@@ -120,6 +120,7 @@ export const BLOCK_CATEGORIES = [
     blocks: [
       { type: 'si'     as BlockType, label: 'si',                params: 'condición',   kind: 'c-if'   as BlockKind },
       { type: 'mientras' as BlockType, label: 'mientras',        params: 'condición',   kind: 'c-loop' as BlockKind },
+      { type: 'hacer'   as BlockType, label: 'hacer',            params: 'condición',   kind: 'c-loop' as BlockKind },
       { type: 'para'   as BlockType, label: 'para',              params: 'entero i = 0; i < 10; i++', kind: 'c-loop' as BlockKind },
       { type: 'cambiar' as BlockType, label: 'cambiar',          params: 'variable',    kind: 'c-loop' as BlockKind },
     ],
@@ -133,6 +134,7 @@ export const BLOCK_CATEGORIES = [
       { type: 'cadena'   as BlockType, label: 'cadena',   params: 'nombre = ""',    kind: 'stack' as BlockKind },
       { type: 'booleano' as BlockType, label: 'booleano', params: 'nombre = verdadero', kind: 'stack' as BlockKind },
       { type: 'doble'    as BlockType, label: 'doble',    params: 'nombre = 0.0',   kind: 'stack' as BlockKind },
+      { type: 'corto'    as BlockType, label: 'corto',    params: 'nombre = 0',     kind: 'stack' as BlockKind },
       { type: 'var'      as BlockType, label: 'var',      params: 'nombre = valor', kind: 'stack' as BlockKind },
     ],
   },

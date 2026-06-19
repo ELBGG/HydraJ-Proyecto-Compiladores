@@ -3,12 +3,16 @@ import { Part } from '../../part.js';
 import { $, append, clearNode } from '../../../base/browser/dom.js';
 import type { EditorPart } from '../editor/editorPart.js';
 import type { SidebarPart } from '../sidebar/sidebarPart.js';
+import type { PanelPart } from '../panel/panelPart.js';
+import type { RunEngine } from '../sidebar/runEngine.js';
 import type { Layout } from '../../layout.js';
 import { iconHydraCode, iconSearch, createIconElement } from '../../../base/browser/icons.js';
 
 export class TitlebarPart extends Part {
   private _editor: EditorPart | null = null;
   private _sidebar: SidebarPart | null = null;
+  private _panel: PanelPart | null = null;
+  private _runEngine: RunEngine | null = null;
   private _layout: Layout | null = null;
   private _currentFilePath: string | null = null;
   private _dropdownOpen: HTMLElement | null = null;
@@ -21,6 +25,8 @@ export class TitlebarPart extends Part {
 
   setEditor(editor: EditorPart): void { this._editor = editor; }
   setSidebar(sidebar: SidebarPart): void { this._sidebar = sidebar; }
+  setPanel(panel: PanelPart): void { this._panel = panel; }
+  setRunEngine(runEngine: RunEngine): void { this._runEngine = runEngine; }
   setLayout(layout: Layout): void { this._layout = layout; }
 
   protected createContentArea(parent: HTMLElement): HTMLElement {
@@ -100,6 +106,7 @@ export class TitlebarPart extends Part {
         label: 'View',
         items: [
           { label: 'Toggle Sidebar',     action: () => this._toggleSidebar() },
+          { label: 'Toggle Panel',       action: () => this._layout?.togglePanel() },
           { label: 'Toggle Output Pane', action: () => this._editor?.toggleOutputPane() },
         ],
       },
@@ -110,8 +117,20 @@ export class TitlebarPart extends Part {
           { label: 'Go to File...',  action: () => this._showGoToFile() },
         ],
       },
-      { label: 'Run' },
-      { label: 'Terminal' },
+      {
+        label: 'Run',
+        items: [
+          { label: 'Run File',         action: () => this._runFile(false) },
+          { label: 'Run with Debug',   action: () => this._runFile(true) },
+        ],
+      },
+      {
+        label: 'Terminal',
+        items: [
+          { label: 'New Terminal',     action: () => this._showTerminal() },
+          { label: 'Toggle Terminal',  action: () => this._layout?.togglePanel() },
+        ],
+      },
       {
         label: 'Help',
         items: [
@@ -168,6 +187,16 @@ export class TitlebarPart extends Part {
   private _toggleSidebar(): void {
     this._sidebarVisible = !this._sidebarVisible;
     this._layout?.setSidebarVisible(this._sidebarVisible);
+  }
+
+  private _runFile(debug: boolean): void {
+    if (!this._editor || !this._runEngine) return;
+    this._runEngine.run(this._editor, { debug });
+  }
+
+  private _showTerminal(): void {
+    this._layout?.showPanel();
+    this._panel?.activateTab('terminal');
   }
 
   // ── Go to File overlay ────────────────────────────────────────────────────

@@ -53,3 +53,26 @@
   font-size: 13px;
   line-height: 1.6;
 }
+
+.panel-body.terminal-active {
+  padding: 0;
+  overflow: hidden;
+}
+
+.terminal-wrapper {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.output-container {
+  display: flex;
+  flex-direction: column;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.output-line { display: contents; }
+.output-stdout { color: var(--vscode-terminal-foreground, #ccc); }
+.output-stderr { color: var(--vscode-errorForeground, #f48771); }
+.output-info   { color: var(--vscode-descriptionForeground, #888); font-style: italic; }

@@ -14,6 +14,7 @@ export interface IHumanLanguageMapping {
   readonly name: string;
   readonly nativeName: string;
   readonly languageId: string;
+  readonly version?: string;
 
   readonly keywords: Record<string, string>;
   readonly types: Record<string, string>;

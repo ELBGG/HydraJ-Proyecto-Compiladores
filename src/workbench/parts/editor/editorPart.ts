@@ -3,8 +3,9 @@ import './transpileEditor.css';
 import * as monaco from 'monaco-editor';
 import { Part } from '../../part.js';
 import { $, append } from '../../../base/browser/dom.js';
-import { TranspilerEngine, LanguageRegistry } from '../../../languages/index.js';
-import { ensureHydraLanguage, getHydraLangId } from './monacoLanguage.js';
+import { TranspilerEngine } from '../../../languages/index.js';
+import { ensureLanguage, getMonacoLangId } from './monacoLanguage.js';
+import { getExtToLangMap } from '../sidebar/extensionLoader.js';
 import { parseCodeToBlocks } from './codeParser.js';
 
 import {
@@ -22,42 +23,20 @@ interface OpenTab {
   progLang: string;
 }
 
-const DEFAULT_SPANISH_JAVA = [
-  '// HydraCode - Java en Español',
-  '',
-  'clase HolaMundo {',
-  '    publico estatico vacio principal(cadena[] argumentos) {',
-  '        sistema.imprimir("Hola desde HydraCode en español!");',
-  '',
-  '        entero numero = 42;',
-  '        si (numero > 10) {',
-  '            sistema.imprimir("El número es mayor que 10");',
-  '        } sino {',
-  '            sistema.imprimir("El número es menor o igual a 10");',
-  '        }',
-  '',
-  '        para (entero i = 0; i < 5; i++) {',
-  '            sistema.imprimir("Iteración: " + i);',
-  '        }',
-  '    }',
-  '}',
-].join('\n');
-
 export class EditorPart extends Part {
   private _tabs: OpenTab[] = [
-    { id: 'readme', path: null, label: 'README.md',           icon: 'file-code', progLang: '' },
-    { id: 'main',   path: null, label: 'transpile/Main.java', icon: 'file-code', progLang: 'java' },
+    { id: 'readme', path: null, label: 'README.md', icon: 'file-code', progLang: '' },
   ];
   private _activeTabId = 'readme';
   private _tabElements = new Map<string, HTMLElement>();
   private _tabContents = new Map<string, string>();
   private _tabsContainer: HTMLElement | null = null;
   private _bodyContainer: HTMLElement | null = null;
-  private _transpileOutput: HTMLElement | null = null;
   private _outputPane: HTMLElement | null = null;
   private _transpileBtn: HTMLElement | null = null;
   private _outputToggleBtn: HTMLButtonElement | null = null;
   private _monacoEditor: monaco.editor.IStandaloneCodeEditor | null = null;
+  private _outputEditor: monaco.editor.IStandaloneCodeEditor | null = null;
   private _outputVisible = false;
   private _currentProgLang = 'java';
   private _currentHumanLang = 'es';
@@ -68,13 +47,20 @@ export class EditorPart extends Part {
 
   constructor() {
     super('editor', { hasTitle: false });
-    this._tabContents.set('main', DEFAULT_SPANISH_JAVA);
   }
 
   // ── Public API ─────────────────────────────────────────────────────────────
 
   getContent(): string {
     return this._monacoEditor?.getValue() ?? '';
+  }
+
+  getActiveTabProgLang(): string {
+    return this._tabs.find(t => t.id === this._activeTabId)?.progLang ?? this._currentProgLang;
+  }
+
+  getCurrentHumanLang(): string {
+    return this._currentHumanLang;
   }
 
   setContent(text: string): void {
@@ -85,9 +71,8 @@ export class EditorPart extends Part {
     this._currentProgLang = progLang;
     this._currentHumanLang = humanLang;
     if (this._monacoEditor) {
-      const mapping = LanguageRegistry.getMapping(progLang, humanLang);
-      if (mapping) ensureHydraLanguage(progLang, humanLang, mapping);
-      const langId = mapping ? getHydraLangId(progLang, humanLang) : 'plaintext';
+      const langId = getMonacoLangId(progLang, humanLang);
+      ensureLanguage(progLang, humanLang); // async; Monaco retokenizes when provider registers
       const model = this._monacoEditor.getModel();
       if (model) monaco.editor.setModelLanguage(model, langId);
       this._doTranspile();
@@ -139,6 +124,7 @@ export class EditorPart extends Part {
       const parsed = parseCodeToBlocks(code);
 
       if (this._monacoEditor) { this._monacoEditor.dispose(); this._monacoEditor = null; }
+      if (this._outputEditor) { this._outputEditor.dispose(); this._outputEditor = null; }
       this._bodyContainer.innerHTML = '';
       this._showBlockCanvas(parsed);
     } else {
@@ -209,6 +195,7 @@ export class EditorPart extends Part {
   private _showTabContent(id: string): void {
     if (!this._bodyContainer) return;
     if (this._monacoEditor) { this._monacoEditor.dispose(); this._monacoEditor = null; }
+    if (this._outputEditor) { this._outputEditor.dispose(); this._outputEditor = null; }
     this._bodyContainer.innerHTML = '';
     const tab = this._tabs.find(t => t.id === id);
     if (!tab) return;
@@ -226,7 +213,7 @@ export class EditorPart extends Part {
     append(welcome, h1);
     const p1 = document.createElement('p'); p1.textContent = 'El editor de código multilenguaje.';
     append(welcome, p1);
-    const p2 = document.createElement('p'); p2.textContent = 'Abre una carpeta desde el explorador o haz clic en "Main.java" para probar.';
+    const p2 = document.createElement('p'); p2.textContent = 'Abre un archivo o carpeta desde el explorador lateral.';
     append(welcome, p2);
     const demo = $('div', ['demo-card']);
     demo.textContent = ['// Java en Español:','clase HolaMundo {','    publico estatico vacio principal(cadena[] args) {','        sistema.imprimir("Hola Mundo!");','    }','}'].join('\n');
@@ -282,22 +269,29 @@ export class EditorPart extends Part {
     append(outputLabel, createIconElement(iconLightning()));
     outputLabel.append(' Output (EN)');
     append(this._outputPane, outputLabel);
-    this._transpileOutput = $('div', ['transpile-output']);
-    append(this._outputPane, this._transpileOutput);
+    const outputEditorHost = $('div', ['monaco-editor-host']);
+    append(this._outputPane, outputEditorHost);
     append(split, this._outputPane);
     if (!this._outputVisible || !progLang) this._outputPane.style.display = 'none';
 
-    let monacoLangId = 'plaintext';
+    const monacoLangId = progLang ? getMonacoLangId(progLang, this._currentHumanLang) : 'plaintext';
     if (progLang) {
-      const mapping = LanguageRegistry.getMapping(progLang, this._currentHumanLang);
-      if (mapping) { ensureHydraLanguage(progLang, this._currentHumanLang, mapping); monacoLangId = getHydraLangId(progLang, this._currentHumanLang); }
+      ensureLanguage(progLang, this._currentHumanLang); // registers hydra-<lang>-es for input
+      ensureLanguage(progLang, 'en');                   // registers <lang> plain TextMate for output
     }
 
     this._monacoEditor = monaco.editor.create(editorHost, {
-      value: initialContent, language: monacoLangId, theme: 'vs-dark', fontSize: 13,
+      value: initialContent, language: monacoLangId, theme: 'hydra-dark-plus', fontSize: 13,
       fontFamily: "'Cascadia Code', 'Fira Code', 'JetBrains Mono', Consolas, monospace",
       minimap: { enabled: false }, lineNumbers: 'on', scrollBeyondLastLine: false,
       wordWrap: 'on', automaticLayout: true, tabSize: 4,
+    });
+
+    this._outputEditor = monaco.editor.create(outputEditorHost, {
+      value: '', language: progLang || 'plaintext', theme: 'hydra-dark-plus', fontSize: 13,
+      fontFamily: "'Cascadia Code', 'Fira Code', 'JetBrains Mono', Consolas, monospace",
+      minimap: { enabled: false }, lineNumbers: 'on', scrollBeyondLastLine: false,
+      wordWrap: 'on', automaticLayout: true, tabSize: 4, readOnly: true,
     });
 
     if (progLang) {
@@ -321,10 +315,10 @@ export class EditorPart extends Part {
   }
 
   private _doTranspile(): void {
-    if (!this._transpileOutput || !this._transpileBtn) return;
+    if (!this._outputEditor || !this._transpileBtn) return;
     const engine = new TranspilerEngine();
     const result = engine.transpile({ code: this.getContent(), languageId: this._currentProgLang, humanLanguageId: this._currentHumanLang });
-    this._transpileOutput.textContent = result.success ? result.output : `// Transpile error:\n// ${result.error}\n\n${result.output}`;
+    this._outputEditor.setValue(result.success ? result.output : `// Transpile error:\n// ${result.error}\n\n${result.output}`);
     this._transpileBtn.style.background = result.success ? 'var(--vscode-button-background)' : 'var(--vscode-errorForeground)';
     window.dispatchEvent(new CustomEvent('hydracode-transpile', { detail: { success: result.success, mapping: `${this._currentHumanLang.toUpperCase()} → ${this._currentProgLang.toUpperCase()}` } }));
   }
@@ -375,8 +369,10 @@ export class EditorPart extends Part {
   // ── Helpers ────────────────────────────────────────────────────────────────
 
   private _detectProgLang(filename: string): string {
-    const ext = filename.split('.').pop()?.toLowerCase() ?? '';
-    return ({ java: 'java', c: 'c', cpp: 'cpp', h: 'cpp' } as Record<string, string>)[ext] ?? '';
+    const ext = '.' + (filename.split('.').pop()?.toLowerCase() ?? '');
+    return getExtToLangMap()[ext]
+      ?? ({ '.java': 'java', '.c': 'c', '.cpp': 'cpp', '.h': 'cpp', '.py': 'python' } as Record<string, string>)[ext]
+      ?? '';
   }
 
   private _fileIcon(name: string): string {
@@ -388,6 +384,7 @@ export class EditorPart extends Part {
   dispose(): void {
     this._blocklySession.dispose();
     if (this._monacoEditor) { this._monacoEditor.dispose(); this._monacoEditor = null; }
+    if (this._outputEditor) { this._outputEditor.dispose(); this._outputEditor = null; }
     super.dispose();
   }
 
@@ -397,6 +394,7 @@ export class EditorPart extends Part {
     this._element.style.width = `${width}px`;
     this._element.style.height = `${height}px`;
     this._monacoEditor?.layout();
+    this._outputEditor?.layout();
     if (this._blocksMode) this._blocklySession.resize();
   }
 }
