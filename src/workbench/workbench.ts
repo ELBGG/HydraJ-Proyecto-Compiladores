@@ -73,6 +73,7 @@ export class Workbench extends Disposable {
     });
 
     this._sidebar.setExtensionRegistry(this._extensionRegistry);
+    this._editor.setExtensionRegistry(this._extensionRegistry);
     this._extensionRegistry.loadInstalled();
 
     // Run engine
@@ -86,6 +87,10 @@ export class Workbench extends Disposable {
         this._layout.showPanel();
         panel.activateTab('output');
       }
+    });
+    this._runEngine.onRequestTerminalRun(({ command }) => {
+      this._layout.showPanel();
+      panel.runInTerminal(command);
     });
     this._sidebar.setRunEngine(this._runEngine);
     this._titlebar.setRunEngine(this._runEngine);
@@ -101,7 +106,7 @@ export class Workbench extends Disposable {
 
     // Sidebar file click → read file via IPC → open in editor
     this._sidebar.onFileOpen(async ({ path, label }) => {
-      const api = (window as any).electronAPI;
+      const api = window.electronAPI;
       if (!api) return;
       const result = await api.folderOps.readFile(path);
       if (!result.success) return;
@@ -128,6 +133,7 @@ export class Workbench extends Disposable {
       if (id === _lastActiveId) {
         this._layout.setSidebarVisible(false);
         if (isBlocks) this._editor.setBlocksMode(false);
+        activitybar.setActiveIcon(null);
         _lastActiveId = null;
       } else {
         if (isBlocks) {

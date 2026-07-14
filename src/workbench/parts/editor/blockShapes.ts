@@ -182,7 +182,6 @@ export function cBlockElseSVG(color: string, dark: string, w: number): string {
 }
 
 export function cBlockBottomSVG(color: string, dark: string, w: number): string {
-  const light = lighten(color, 18);
   const light2 = lighten(color, 6);
   const uid = `bot-${color.slice(1)}-${Date.now()}`;
   const bw = BUMP_W;

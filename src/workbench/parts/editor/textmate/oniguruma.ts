@@ -12,7 +12,13 @@ export function getOnigLib(): Promise<IOnigLib> {
       .then(() => ({
         createOnigScanner(patterns: string[]) { return new OnigScanner(patterns); },
         createOnigString(str: string) { return new OnigString(str); },
-      }));
+      }))
+      .catch((err) => {
+        // Don't permanently cache a rejected promise: clear it so the next
+        // call retries instead of forever returning this same failed attempt.
+        _lib = null;
+        throw err;
+      });
   }
   return _lib;
 }

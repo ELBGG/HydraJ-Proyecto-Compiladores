@@ -68,18 +68,67 @@ const MARKETPLACE_TO_MONACO: Record<string, string> = {
   'ecmel.vscode-html-css':               'html',
 };
 
+// Covers (almost) every language Monaco ships built-in tokenizer support for — see
+// node_modules/monaco-editor/esm/vs/basic-languages/ — so that a marketplace search
+// for practically any mainstream language resolves to a working Monaco highlighter,
+// not just the ~20 languages with a hand-picked extension id below. A handful of very
+// niche smart-contract/DSL languages (LIGO's cameligo/pascaligo/lexon, sophia, pla,
+// postiats, m3, sb, st, qsharp) are intentionally left out rather than guessed at.
 const LANG_FROM_EXTENSION_NAME: Record<string, string> = {
   'java': 'java', 'python': 'python', 'javascript': 'javascript', 'typescript': 'typescript',
   'csharp': 'csharp', 'cpp': 'cpp', 'c': 'c', 'go': 'go', 'rust': 'rust', 'swift': 'swift',
   'kotlin': 'kotlin', 'scala': 'scala', 'ruby': 'ruby', 'dart': 'dart', 'julia': 'julia',
-  'sql': 'sql', 'html': 'html', 'css': 'css', 'yaml': 'yaml', 'xml': 'xml', 'toml': 'toml',
-  'json': 'json', 'markdown': 'markdown', 'dockerfile': 'dockerfile', 'powershell': 'powershell',
-  'bash': 'bash', 'shell': 'bash', 'lua': 'lua', 'php': 'php', 'perl': 'perl', 'r': 'r',
-  'haskell': 'haskell', 'ocaml': 'ocaml', 'zig': 'zig', 'nim': 'nim', 'crystal': 'crystal',
-  'fortran': 'fortran', 'cobol': 'cobol', 'ada': 'ada', 'lisp': 'lisp', 'scheme': 'scheme',
+  'sql': 'sql', 'html': 'html', 'css': 'css', 'less': 'less', 'scss': 'scss', 'yaml': 'yaml',
+  'xml': 'xml', 'toml': 'toml', 'json': 'json', 'markdown': 'markdown', 'mdx': 'mdx',
+  'dockerfile': 'dockerfile', 'docker': 'dockerfile', 'powershell': 'powershell',
+  'bash': 'shell', 'shell': 'shell', 'sh': 'shell', 'lua': 'lua', 'php': 'php', 'perl': 'perl',
+  'r-lang': 'r', 'haskell': 'haskell', 'ocaml': 'ocaml', 'zig': 'zig', 'nim': 'nim',
+  'crystal': 'crystal', 'fortran': 'fortran', 'cobol': 'cobol', 'ada': 'ada',
   'clojure': 'clojure', 'elixir': 'elixir', 'erlang': 'erlang', 'fsharp': 'fsharp',
-  'groovy': 'groovy', 'graphql': 'graphql', 'protobuf': 'protobuf', 'thrift': 'thrift',
-  'makefile': 'cpp', 'cmake': 'cpp', 'gradle': 'groovy', 'maven': 'java',
+  'f#': 'fsharp', 'groovy': 'groovy', 'graphql': 'graphql', 'protobuf': 'protobuf',
+  'proto3': 'protobuf', 'makefile': 'cpp', 'cmake': 'cpp', 'gradle': 'groovy', 'maven': 'java',
+  'objective-c': 'objective-c', 'objectivec': 'objective-c', 'objc': 'objective-c',
+  'pascal': 'pascal', 'delphi': 'pascal', 'visual basic': 'vb', 'vbnet': 'vb', 'vb.net': 'vb',
+  'bicep': 'bicep', 'terraform': 'hcl', 'hcl': 'hcl', 'redis': 'redis', 'mysql': 'mysql',
+  'pgsql': 'pgsql', 'postgres': 'pgsql', 'postgresql': 'pgsql', 'redshift': 'redshift',
+  'coffeescript': 'coffee', 'apex': 'apex', 'salesforce': 'apex', 'abap': 'abap', 'sap': 'abap',
+  'batch': 'bat', 'cypher': 'cypher', 'neo4j': 'cypher', 'ecl': 'ecl', 'hpcc': 'ecl',
+  'freemarker': 'freemarker2', 'handlebars': 'handlebars', 'hbs': 'handlebars', 'ini': 'ini',
+  'liquid': 'liquid', 'mips': 'mips', 'assembly': 'mips', 'msdax': 'msdax', 'dax': 'msdax',
+  'powerquery': 'powerquery', 'm-query': 'powerquery', 'twig': 'twig', 'razor': 'razor',
+  'aspnet': 'razor', 'solidity': 'solidity', 'ethereum': 'solidity', 'sparql': 'sparql',
+  'rdf': 'sparql', 'systemverilog': 'systemverilog', 'verilog': 'systemverilog', 'vhdl': 'systemverilog',
+  'tcl': 'tcl', 'restructuredtext': 'restructuredtext', 'rst': 'restructuredtext',
+  'typespec': 'typespec', 'wgsl': 'wgsl', 'webgpu': 'wgsl', 'azcli': 'azcli',
+  'azure-cli': 'azcli', 'flow': 'flow9', 'scheme': 'scheme', 'racket': 'scheme',
+  'thrift': 'protobuf',
+};
+
+/** Common on-disk file extensions per Monaco language id, used to associate installed
+ *  marketplace/inferred languages with real files so opening e.g. a .go file after
+ *  "installing" Go auto-selects the right language, the same way the bundled
+ *  java/c/cpp/python extensions already do via their package.json `contributes.languages`. */
+export const MONACO_LANG_FILE_EXTENSIONS: Record<string, string[]> = {
+  python: ['.py', '.pyw'], go: ['.go'], rust: ['.rs'], csharp: ['.cs'],
+  powershell: ['.ps1', '.psm1'], typescript: ['.ts', '.tsx', '.mts', '.cts'],
+  javascript: ['.js', '.jsx', '.mjs', '.cjs'], swift: ['.swift'], kotlin: ['.kt', '.kts'],
+  scala: ['.scala', '.sc'], ruby: ['.rb'], dart: ['.dart'], julia: ['.jl'],
+  markdown: ['.md', '.markdown'], mdx: ['.mdx'], toml: ['.toml'], yaml: ['.yaml', '.yml'],
+  xml: ['.xml'], sql: ['.sql'], html: ['.html', '.htm'], css: ['.css'], less: ['.less'],
+  scss: ['.scss'], json: ['.json'], dockerfile: ['.dockerfile'], shell: ['.sh', '.bash'],
+  lua: ['.lua'], php: ['.php'], perl: ['.pl', '.pm'], r: ['.r'], haskell: ['.hs'],
+  ocaml: ['.ml', '.mli'], zig: ['.zig'], nim: ['.nim'], crystal: ['.cr'],
+  fortran: ['.f90', '.f'], cobol: ['.cob', '.cbl'], ada: ['.adb', '.ads'],
+  clojure: ['.clj', '.cljs'], elixir: ['.ex', '.exs'], erlang: ['.erl'],
+  fsharp: ['.fs', '.fsx'], groovy: ['.groovy', '.gvy'], graphql: ['.graphql', '.gql'],
+  protobuf: ['.proto'], 'objective-c': ['.m', '.mm'], pascal: ['.pas'], vb: ['.vb'],
+  bicep: ['.bicep'], hcl: ['.tf', '.hcl'], redis: ['.redis'], mysql: ['.mysql'],
+  pgsql: ['.pgsql'], redshift: ['.redshift'], coffee: ['.coffee'], apex: ['.cls', '.apex'],
+  abap: ['.abap'], bat: ['.bat', '.cmd'], cypher: ['.cypher', '.cql'], ecl: ['.ecl'],
+  handlebars: ['.hbs', '.handlebars'], ini: ['.ini'], liquid: ['.liquid'],
+  twig: ['.twig'], razor: ['.cshtml', '.razor'], solidity: ['.sol'], sparql: ['.sparql', '.rq'],
+  systemverilog: ['.sv', '.svh'], tcl: ['.tcl'], restructuredtext: ['.rst'],
+  typespec: ['.tsp'], wgsl: ['.wgsl'],
 };
 
 function inferLanguageFromExtension(ext: any): string | null {
@@ -121,7 +170,7 @@ function inferLanguageFromExtension(ext: any): string | null {
 
 export class ExtensionStore {
   async search(text: string): Promise<MarketplaceExtension[]> {
-    const api = (window as any).electronAPI;
+    const api = window.electronAPI;
     if (!api) return [];
     const result = await api.extensionOps.queryMarketplace(text || 'popular');
     if (!result.success || !Array.isArray(result.extensions)) return [];

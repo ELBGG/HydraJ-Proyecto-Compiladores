@@ -12,7 +12,8 @@
     "virtual": "virtual",
     "en_linea": "inline",
     "explicito": "explicit",
-    "amigo": "friend"
+    "amigo": "friend",
+    "registrar": "register"
   },
   "keywords": {
     "para": "for",
@@ -45,7 +46,10 @@
     "operador": "operator",
     "este": "this",
     "tamano_de": "sizeof",
-    "typedef": "typedef"
+    "typedef": "typedef",
+    "ir_a": "goto",
+    "auto": "auto",
+    "principal": "main"
   },
   "types": {
     "entero": "int",

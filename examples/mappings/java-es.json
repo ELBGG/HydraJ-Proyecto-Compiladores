@@ -49,7 +49,8 @@
     "ceder": "yield",
     "sellado": "sealed",
     "permite": "permits",
-    "no-sellado": "non-sealed"
+    "no-sellado": "non-sealed",
+    "principal": "main"
   },
   "types": {
     "booleano": "boolean",
@@ -62,7 +63,6 @@
     "corto": "short",
     "cadena": "String",
     "objeto": "Object",
-    "nulo": "Void",
     "entero_objeto": "Integer",
     "booleano_objeto": "Boolean",
     "doble_objeto": "Double",
@@ -98,15 +98,17 @@
     "nulo": "null"
   },
   "patterns": [
-    { "from": "sistema\\.imprimir\\b", "to": "System.out.println" },
-    { "from": "sistema\\.imprimir_linea\\b", "to": "System.out.println" },
-    { "from": "sistema\\.imprimir_error\\b", "to": "System.err.println" },
-    { "from": "sistema\\.leer\\b", "to": "System.in.read" },
-    { "from": "matematicas\\.aleatorio\\b", "to": "Math.random" },
-    { "from": "matematicas\\.abs\\.([a-zA-Z_]\\w*)", "to": "Math.abs($1)" },
-    { "from": "matematicas\\.potencia\\.\\(([^,]+),\\s*([^)]+)\\)", "to": "Math.pow($1, $2)" },
-    { "from": "matematicas\\.raiz\\.\\(([^)]+)\\)", "to": "Math.sqrt($1)" },
-    { "from": "matematicas\\.maximo\\.\\(([^,]+),\\s*([^)]+)\\)", "to": "Math.max($1, $2)" },
-    { "from": "matematicas\\.minimo\\.\\(([^,]+),\\s*([^)]+)\\)", "to": "Math.min($1, $2)" }
+    { "from": "\\bsistema\\.imprimir\\b", "to": "System.out.println" },
+    { "from": "\\bsistema\\.imprimir_linea\\b", "to": "System.out.println" },
+    { "from": "\\bsistema\\.imprimir_error\\b", "to": "System.err.println" },
+    { "from": "\\bsistema\\.leer\\b", "to": "System.in.read" },
+    { "from": "\\bmatematicas\\.aleatorio\\b", "to": "Math.random" },
+    { "from": "\\bmatematicas\\.abs\\.\\(([^)]+)\\)", "to": "Math.abs($1)" },
+    { "from": "\\bmatematicas\\.potencia\\.\\(([^,]+),\\s*([^)]+)\\)", "to": "Math.pow($1, $2)" },
+    { "from": "\\bmatematicas\\.raiz\\.\\(([^)]+)\\)", "to": "Math.sqrt($1)" },
+    { "from": "\\bmatematicas\\.maximo\\.\\(([^,]+),\\s*([^)]+)\\)", "to": "Math.max($1, $2)" },
+    { "from": "\\bmatematicas\\.minimo\\.\\(([^,]+),\\s*([^)]+)\\)", "to": "Math.min($1, $2)" },
+    { "from": "\\bmatematicas\\.piso\\.\\(([^)]+)\\)", "to": "Math.floor($1)" },
+    { "from": "\\bmatematicas\\.techo\\.\\(([^)]+)\\)", "to": "Math.ceil($1)" }
   ]
 }

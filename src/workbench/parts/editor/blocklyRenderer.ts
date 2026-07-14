@@ -365,17 +365,17 @@ generator.forBlock['hc_intentar'] = function (block, gen) {
   return `intentar {\n${body}} capturar (${exc}) {\n${catchBody}}\n`;
 };
 
-function genPrint(block: Blockly.Block, gen: Blockly.CodeGenerator): string {
+function genPrint(block: Blockly.Block, _gen: Blockly.CodeGenerator): string {
   const text = block.getFieldValue('TEXT');
   return `sistema.imprimir(${text});\n`;
 }
 generator.forBlock['hc_imprimir'] = genPrint;
-generator.forBlock['hc_imprimir_error'] = function (block, gen) {
+generator.forBlock['hc_imprimir_error'] = function (block, _gen) {
   const text = block.getFieldValue('TEXT');
   return `sistema.imprimir_error(${text});\n`;
 };
 
-function genVarDecl(block: Blockly.Block, gen: Blockly.CodeGenerator): string {
+function genVarDecl(block: Blockly.Block, _gen: Blockly.CodeGenerator): string {
   const varName = block.getFieldValue('VAR');
   return `${block.type.replace('hc_', '')} ${varName};\n`;
 }
@@ -386,13 +386,14 @@ generator.forBlock['hc_doble'] = genVarDecl;
 generator.forBlock['hc_flotante'] = genVarDecl;
 generator.forBlock['hc_largo'] = genVarDecl;
 generator.forBlock['hc_caracter'] = genVarDecl;
+generator.forBlock['hc_corto'] = genVarDecl;
 generator.forBlock['hc_var'] = genVarDecl;
 
-generator.forBlock['hc_retornar'] = function (block, gen) {
+generator.forBlock['hc_retornar'] = function (block, _gen) {
   return `retornar ${block.getFieldValue('VALUE')};\n`;
 };
 
-generator.forBlock['hc_lanzar'] = function (block, gen) {
+generator.forBlock['hc_lanzar'] = function (block, _gen) {
   return `lanzar nuevo ${block.getFieldValue('EXC')};\n`;
 };
 

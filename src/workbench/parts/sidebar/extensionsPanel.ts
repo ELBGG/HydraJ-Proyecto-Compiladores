@@ -1,6 +1,7 @@
 import { $, append } from '../../../base/browser/dom.js';
-import type { ExtensionRegistry, InstalledExtension } from './extensionRegistry.js';
+import type { ExtensionRegistry } from './extensionRegistry.js';
 import type { ExtensionStore, MarketplaceExtension } from './extensionStore.js';
+import { MONACO_LANG_FILE_EXTENSIONS } from './extensionStore.js';
 import { LanguageRegistry, HumanLanguageMapping } from '../../../languages/index.js';
 
 const EXAMPLE_MAPPINGS: Array<{
@@ -21,12 +22,17 @@ export class ExtensionsPanel {
   private _importSection!: HTMLElement;
   private _detailEl: HTMLElement | null = null;
   private _searchTimeout: ReturnType<typeof setTimeout> | null = null;
+  private _searchGeneration = 0;
 
   constructor(
     private readonly _container: HTMLElement,
     private readonly _registry: ExtensionRegistry,
     private readonly _store: ExtensionStore,
   ) {
+    // Surface extension persistence failures (disk full, file locked, etc.) the same way
+    // every other error in this panel is surfaced. See extensionRegistry.ts for why this is
+    // a plain callback rather than an Emitter subscription.
+    this._registry.setPersistErrorHandler(msg => alert(`No se pudieron guardar los cambios de extensiones: ${msg}`));
     this._render();
   }
 
@@ -123,35 +129,49 @@ export class ExtensionsPanel {
     append(headerRow, nameCol);
     append(el, headerRow);
 
-    const isInstalled = this._registry.isInstalled(ext.id);
+    const exactInstalled = this._registry.isInstalled(ext.id);
+    // A marketplace result can name a language already provided by a differently-namespaced
+    // installed extension (e.g. builtin.python vs. ms-python.python) — treat that as
+    // installed too, instead of offering a redundant "Instalar".
+    const languageProvidedElsewhere = !exactInstalled
+      && !!ext.monacoLang
+      && this._registry.isLanguageInstalled(ext.monacoLang);
+
     const btn = document.createElement('button');
-    btn.className = isInstalled
+    btn.className = (exactInstalled || languageProvidedElsewhere)
       ? 'ext-btn ext-btn-installed ext-detail-btn'
       : 'ext-btn ext-btn-install ext-detail-btn';
-    btn.textContent = isInstalled ? 'Desinstalar' : 'Instalar';
-    btn.addEventListener('click', async () => {
-      if (this._registry.isInstalled(ext.id)) {
-        await this._registry.uninstall(ext.id);
-        btn.className = 'ext-btn ext-btn-install ext-detail-btn';
-        btn.textContent = 'Instalar';
-        this._refreshInstalled();
-      } else {
-        btn.disabled = true;
-        btn.textContent = 'Instalando...';
-        await this._registry.install({
-          id: ext.id,
-          displayName: ext.name,
-          languages: ext.monacoLang ? [{ id: ext.monacoLang, extensions: [] }] : [],
-          grammars: [],
-          installPath: '',
-          builtin: false,
-        });
-        btn.disabled = false;
-        btn.className = 'ext-btn ext-btn-installed ext-detail-btn';
-        btn.textContent = 'Desinstalar';
-        this._refreshInstalled();
-      }
-    });
+    btn.textContent = exactInstalled ? 'Desinstalar' : languageProvidedElsewhere ? 'Instalado ✓' : 'Instalar';
+    if (languageProvidedElsewhere) {
+      btn.disabled = true;
+      btn.title = 'Este lenguaje ya está disponible mediante otra extensión instalada.';
+    } else {
+      btn.addEventListener('click', async () => {
+        if (this._registry.isInstalled(ext.id)) {
+          await this._registry.uninstall(ext.id);
+          btn.className = 'ext-btn ext-btn-install ext-detail-btn';
+          btn.textContent = 'Instalar';
+          this._refreshInstalled();
+        } else {
+          btn.disabled = true;
+          btn.textContent = 'Instalando...';
+          await this._registry.install({
+            id: ext.id,
+            displayName: ext.name,
+            languages: ext.monacoLang
+              ? [{ id: ext.monacoLang, extensions: MONACO_LANG_FILE_EXTENSIONS[ext.monacoLang] ?? [] }]
+              : [],
+            grammars: [],
+            installPath: '',
+            builtin: false,
+          });
+          btn.disabled = false;
+          btn.className = 'ext-btn ext-btn-installed ext-detail-btn';
+          btn.textContent = 'Desinstalar';
+          this._refreshInstalled();
+        }
+      });
+    }
     append(el, btn);
 
     if (ext.description) {
@@ -265,6 +285,11 @@ export class ExtensionsPanel {
   }
 
   private async _loadResults(text: string): Promise<void> {
+    // Generation guard: the debounce timer already coalesces keystrokes into one firing, but
+    // two in-flight searches ("j" then "java") can still resolve out of order. Only the
+    // response that matches the latest search when it resolves may render.
+    const generation = ++this._searchGeneration;
+
     const container = this._resultsSection;
     container.innerHTML = '';
 
@@ -276,12 +301,15 @@ export class ExtensionsPanel {
     try {
       results = await this._store.search(text);
     } catch {
+      if (generation !== this._searchGeneration) return; // superseded by a newer search
       container.innerHTML = '';
       const err = $('div', ['sidebar-placeholder']);
       err.textContent = 'Error al conectar con el marketplace.';
       append(container, err);
       return;
     }
+
+    if (generation !== this._searchGeneration) return; // superseded by a newer search
 
     container.innerHTML = '';
 
@@ -330,7 +358,9 @@ export class ExtensionsPanel {
       await this._registry.install({
         id: ext.id,
         displayName: ext.name,
-        languages: ext.monacoLang ? [{ id: ext.monacoLang, extensions: [] }] : [],
+        languages: ext.monacoLang
+          ? [{ id: ext.monacoLang, extensions: MONACO_LANG_FILE_EXTENSIONS[ext.monacoLang] ?? [] }]
+          : [],
         grammars: [],
         installPath: '',
         builtin: false,
@@ -349,7 +379,15 @@ export class ExtensionsPanel {
       this._refreshInstalled();
     };
 
-    if (this._registry.isInstalled(ext.id)) {
+    const exactInstalled = this._registry.isInstalled(ext.id);
+    // See _renderDetail() for why a language already covered by another installed extension
+    // (e.g. a builtin) must not be shown as freely installable via this differently-
+    // namespaced marketplace id.
+    const languageProvidedElsewhere = !exactInstalled
+      && !!ext.monacoLang
+      && this._registry.isLanguageInstalled(ext.monacoLang);
+
+    if (exactInstalled) {
       btn.className = 'ext-btn ext-btn-installed';
       btn.textContent = 'Instalado ✓';
       btn.addEventListener('click', async () => {
@@ -358,6 +396,11 @@ export class ExtensionsPanel {
         btn.textContent = 'Install';
         this._refreshInstalled();
       });
+    } else if (languageProvidedElsewhere) {
+      btn.className = 'ext-btn ext-btn-installed';
+      btn.textContent = 'Instalado ✓';
+      btn.disabled = true;
+      btn.title = 'Este lenguaje ya está disponible mediante otra extensión instalada.';
     } else {
       btn.className = 'ext-btn ext-btn-install';
       btn.textContent = 'Install';
@@ -385,7 +428,7 @@ export class ExtensionsPanel {
       const data = await resp.json();
       this._registerMappingFromData(data, langId);
     } catch {
-      const api = (window as any).electronAPI;
+      const api = window.electronAPI;
       if (!api) return;
       const result = await api.extensionOps.readExampleMapping(filename);
       if (!result.success) {
@@ -397,6 +440,23 @@ export class ExtensionsPanel {
     }
   }
 
+  /**
+   * Validates that an imported mapping field (keywords/types) is a plain object — not an
+   * array, not null — whose values are all strings, and free of prototype-polluting keys.
+   * Without this, a malformed field like `{"keywords":["x","y"]}` passes the old truthy-only
+   * check and silently corrupts transpilation downstream: TranspilerEngine's
+   * Object.entries(mapping.keywords) on an array yields numeric-index keys ("0","1",...),
+   * which it then whole-word-replaces wherever those digits appear in the user's real code.
+   */
+  private _isValidMappingField(value: unknown): value is Record<string, string> {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+    for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+      if (key === '__proto__' || key === 'constructor' || key === 'prototype') return false;
+      if (typeof val !== 'string') return false;
+    }
+    return true;
+  }
+
   private _registerMappingFromData(data: any, fallbackLangId: string): void {
     try {
       if (!data.langId && !fallbackLangId) {
@@ -405,6 +465,13 @@ export class ExtensionsPanel {
       }
       if (!data.keywords && !data.types) {
         alert('El JSON debe tener al menos un campo "keywords" o "types".');
+        return;
+      }
+      if (
+        (data.keywords !== undefined && !this._isValidMappingField(data.keywords)) ||
+        (data.types !== undefined && !this._isValidMappingField(data.types))
+      ) {
+        alert('Formato inválido: "keywords" y "types" deben ser objetos { "clave": "valor" } con valores de texto (no listas).');
         return;
       }
       const langId = data.langId ?? fallbackLangId;
@@ -434,11 +501,11 @@ export class ExtensionsPanel {
   }
 
   private async _importMapping(): Promise<void> {
-    const api = (window as any).electronAPI;
+    const api = window.electronAPI;
     if (!api) return;
     const result = await api.dialogOps.openJson();
     if (result.canceled) return;
-    if (result.error) {
+    if (result.content === undefined) {
       alert('Error al leer el archivo.');
       return;
     }

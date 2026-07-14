@@ -29,8 +29,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
   },
   runOps: {
-    execute:  (opts)  => ipcRenderer.invoke('run:execute', opts),
-    stop:     ()      => ipcRenderer.invoke('run:stop'),
+    execute:         (opts)          => ipcRenderer.invoke('run:execute', opts),
+    prepareTerminal: (code, language) => ipcRenderer.invoke('run:prepare-terminal', { code, language }),
+    stop:            ()              => ipcRenderer.invoke('run:stop'),
     onOutput: (cb) => {
       const handler = (_, data) => cb(data);
       ipcRenderer.on('run:output', handler);

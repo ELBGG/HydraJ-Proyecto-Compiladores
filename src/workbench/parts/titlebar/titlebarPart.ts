@@ -6,7 +6,7 @@ import type { SidebarPart } from '../sidebar/sidebarPart.js';
 import type { PanelPart } from '../panel/panelPart.js';
 import type { RunEngine } from '../sidebar/runEngine.js';
 import type { Layout } from '../../layout.js';
-import { iconHydraCode, iconSearch, createIconElement } from '../../../base/browser/icons.js';
+import { iconHydraCode, createIconElement } from '../../../base/browser/icons.js';
 
 export class TitlebarPart extends Part {
   private _editor: EditorPart | null = null;
@@ -14,10 +14,9 @@ export class TitlebarPart extends Part {
   private _panel: PanelPart | null = null;
   private _runEngine: RunEngine | null = null;
   private _layout: Layout | null = null;
-  private _currentFilePath: string | null = null;
   private _dropdownOpen: HTMLElement | null = null;
   private _goToFileOverlay: HTMLElement | null = null;
-  private _sidebarVisible = true;
+  private readonly _bodyDropdowns: HTMLElement[] = [];
 
   constructor() {
     super('titlebar', { hasTitle: false, minimumHeight: 35 });
@@ -43,18 +42,27 @@ export class TitlebarPart extends Part {
     }
     append(container, menu);
 
-    document.addEventListener('click', () => this._closeDropdown());
+    const onDocumentClick = () => this._closeDropdown();
+    document.addEventListener('click', onDocumentClick);
+    this._register({
+      dispose: () => {
+        document.removeEventListener('click', onDocumentClick);
+        for (const dd of this._bodyDropdowns) dd.remove();
+        this._bodyDropdowns.length = 0;
+      },
+    });
 
     const center = $('div', ['titlebar-center']);
     center.textContent = 'HydraCode';
     append(container, center);
 
     const actions = $('div', ['titlebar-actions']);
-    if ((window as any).electronAPI?.isElectron) {
+    const api = window.electronAPI;
+    if (api?.isElectron) {
       const btns: Array<{ cls: string; text: string; fn: () => void }> = [
-        { cls: 'minimize', text: '−', fn: () => (window as any).electronAPI.windowControls.minimize() },
-        { cls: 'maximize', text: '□', fn: () => (window as any).electronAPI.windowControls.maximize() },
-        { cls: 'close',    text: '×', fn: () => (window as any).electronAPI.windowControls.close() },
+        { cls: 'minimize', text: '−', fn: () => api.windowControls.minimize() },
+        { cls: 'maximize', text: '□', fn: () => api.windowControls.maximize() },
+        { cls: 'close',    text: '×', fn: () => api.windowControls.close() },
       ];
       for (const b of btns) {
         const btn = $('button', ['titlebar-control', b.cls]);
@@ -134,7 +142,7 @@ export class TitlebarPart extends Part {
       {
         label: 'Help',
         items: [
-          { label: 'About HydraCode', action: () => (window as any).electronAPI?.appOps.about() },
+          { label: 'About HydraCode', action: () => window.electronAPI?.appOps.about() },
         ],
       },
     ];
@@ -165,12 +173,22 @@ export class TitlebarPart extends Part {
           append(dropdown, entry);
         }
       }
-      append(wrapper, dropdown);
+      // Appended to document.body (not `wrapper`) and positioned via getBoundingClientRect
+      // on open, rather than nested + `position: absolute` inside the titlebar Part. The
+      // titlebar and the sidebar/editor/panel Parts are sibling flex items with no z-index-
+      // creating stacking context between them, so a z-index on a nested descendant can't
+      // reliably paint above sibling Parts' content — this "portal" sidesteps that class of
+      // bug entirely, the same way tooltips/modals are conventionally rendered at body level.
+      append(document.body, dropdown);
+      this._bodyDropdowns.push(dropdown);
       span.addEventListener('click', (e) => {
         e.stopPropagation();
         const alreadyOpen = this._dropdownOpen === dropdown;
         this._closeDropdown();
         if (!alreadyOpen) {
+          const rect = span.getBoundingClientRect();
+          dropdown.style.left = `${rect.left}px`;
+          dropdown.style.top = `${rect.bottom}px`;
           dropdown.classList.add('open');
           this._dropdownOpen = dropdown;
         }
@@ -185,8 +203,7 @@ export class TitlebarPart extends Part {
   }
 
   private _toggleSidebar(): void {
-    this._sidebarVisible = !this._sidebarVisible;
-    this._layout?.setSidebarVisible(this._sidebarVisible);
+    this._layout?.toggleSidebar();
   }
 
   private _runFile(debug: boolean): void {
@@ -248,15 +265,25 @@ export class TitlebarPart extends Part {
     input.focus();
 
     setTimeout(() => {
-      document.addEventListener('click', () => {
+      const onDocumentClick = (e: MouseEvent) => {
+        if (this._goToFileOverlay !== overlay) {
+          // This overlay was already closed through another path (e.g.
+          // selecting a file); drop this stale listener without touching
+          // whatever overlay may be open now.
+          document.removeEventListener('click', onDocumentClick);
+          return;
+        }
+        if (overlay.contains(e.target as Node)) return;
+        document.removeEventListener('click', onDocumentClick);
         overlay.remove();
         this._goToFileOverlay = null;
-      }, { once: true });
+      };
+      document.addEventListener('click', onDocumentClick);
     }, 0);
   }
 
   private async _openFileFromWorkspace(filePath: string, label: string): Promise<void> {
-    const api = (window as any).electronAPI;
+    const api = window.electronAPI;
     if (!api || !this._editor) return;
     const result = await api.folderOps.readFile(filePath);
     if (!result.success) return;
@@ -266,24 +293,27 @@ export class TitlebarPart extends Part {
   // ── File actions ──────────────────────────────────────────────────────────
 
   onNewFile(): void {
-    this._currentFilePath = null;
-    this._editor?.setContent('');
+    this._editor?.newFile();
   }
 
   async onOpenFile(): Promise<void> {
-    const api = (window as any).electronAPI;
-    if (!api) return;
+    const api = window.electronAPI;
+    if (!api || !this._editor) return;
     const result = await api.fileOps.open();
     if (result.canceled) return;
-    this._currentFilePath = result.path;
-    this._editor?.setContent(result.content);
+    // Open as a real tab (same path openFolder-tree opens through), not setContent() —
+    // setContent() only overwrites whatever tab/editor is already showing (or silently
+    // no-ops from the welcome screen, where no Monaco editor is mounted yet).
+    const label = result.path.split(/[\\/]/).pop() ?? result.path;
+    this._editor.openFile({ path: result.path, label, content: result.content });
   }
 
   async onSave(): Promise<void> {
     if (!this._editor) return;
-    if (this._currentFilePath) {
-      const api = (window as any).electronAPI;
-      if (api) await api.fileOps.save(this._currentFilePath, this._editor.getContent());
+    const path = this._editor.getActiveTabPath();
+    if (path) {
+      const api = window.electronAPI;
+      if (api) await api.fileOps.save(path, this._editor.getContent());
     } else {
       await this.onSaveAs();
     }
@@ -291,10 +321,13 @@ export class TitlebarPart extends Part {
 
   async onSaveAs(): Promise<void> {
     if (!this._editor) return;
-    const api = (window as any).electronAPI;
+    const api = window.electronAPI;
     if (!api) return;
     const result = await api.fileOps.saveAs(this._editor.getContent());
-    if (!result.canceled) this._currentFilePath = result.path;
+    if (!result.canceled) {
+      const label = result.path.split(/[\\/]/).pop() ?? result.path;
+      this._editor.setActiveTabPath(result.path, label);
+    }
   }
 
   layout(width: number, height: number): void {

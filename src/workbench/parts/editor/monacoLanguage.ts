@@ -1,4 +1,3 @@
-import * as monaco from 'monaco-editor';
 import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
 import { LanguageRegistry } from '../../../languages/index.js';
 import { ensureTextMateLanguage } from './textmate/monacoTextmateBridge.js';

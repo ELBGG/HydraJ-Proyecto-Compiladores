@@ -1,4 +1,5 @@
 import { HumanLanguageMapping } from '../tokens/HumanLanguageMapping.js';
+import { cSpanish } from '../c/CSpanish.js';
 
 export const cppSpanish = new HumanLanguageMapping(
   'es',
@@ -7,31 +8,17 @@ export const cppSpanish = new HumanLanguageMapping(
   'cpp',
   {
     version: '20',
+    // C++ inherits C's modifiers/keywords (including goto/auto/register), so derive
+    // from CSpanish instead of hand-maintaining a parallel list that can drift out of sync.
     modifiers: {
-      'const': 'const',
-      'estatico': 'static',
-      'externo': 'extern',
-      'volatil': 'volatile',
+      ...cSpanish.modifiers,
       'virtual': 'virtual',
       'en_linea': 'inline',
       'explicito': 'explicit',
       'amigo': 'friend',
     },
     keywords: {
-      'para': 'for',
-      'si': 'if',
-      'sino': 'else',
-      'mientras': 'while',
-      'hacer': 'do',
-      'retornar': 'return',
-      'romper': 'break',
-      'continuar': 'continue',
-      'cambiar': 'switch',
-      'caso': 'case',
-      'predeterminado': 'default',
-      'estructura': 'struct',
-      'union': 'union',
-      'enum': 'enum',
+      ...cSpanish.keywords,
       'clase': 'class',
       'nuevo': 'new',
       'eliminar': 'delete',
@@ -47,8 +34,6 @@ export const cppSpanish = new HumanLanguageMapping(
       'tipoid': 'typename',
       'operador': 'operator',
       'este': 'this',
-      'tamano_de': 'sizeof',
-      'typedef': 'typedef',
     },
     types: {
       'entero': 'int',

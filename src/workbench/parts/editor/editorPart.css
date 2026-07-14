@@ -34,9 +34,10 @@
 .editor-tab {
   display: flex;
   align-items: center;
-  height: 35px;
+  /* height comes from the tab bar's align-items: stretch, so the accent
+     underline (::after, bottom: 0) stays inside the visible area */
   padding: 0 14px;
-  font-size: 13px;
+  font-size: 12px;
   cursor: pointer;
   white-space: nowrap;
   border-right: 1px solid var(--vscode-tab-border);
@@ -62,8 +63,16 @@
 .editor-tab.active {
   color: var(--vscode-tab-activeForeground);
   background-color: var(--vscode-tab-activeBackground);
-  border-top: 1px solid var(--vscode-tab-activeBorderTop);
-  margin-top: -1px;
+}
+
+.editor-tab.active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background-color: var(--hydra-accent);
 }
 
 .editor-tab .tab-close {
@@ -105,11 +114,26 @@
   padding: 40px;
 }
 
-.editor-welcome h1 {
-  font-weight: 300;
-  font-size: 36px;
-  margin: 0 0 12px 0;
-  letter-spacing: -0.5px;
+@keyframes welcome-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.editor-welcome > * {
+  animation: welcome-rise 0.45s cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+}
+.editor-welcome > *:nth-child(2) { animation-delay: 0.06s; }
+.editor-welcome > *:nth-child(3) { animation-delay: 0.12s; }
+.editor-welcome > *:nth-child(4) { animation-delay: 0.18s; }
+.editor-welcome > *:nth-child(5) { animation-delay: 0.24s; }
+
+.editor-welcome h1.welcome-wordmark {
+  font-family: var(--monaco-monospace-font);
+  font-weight: 350;
+  font-size: 42px;
+  margin: 0 0 10px 0;
+  letter-spacing: -1px;
+  color: var(--vscode-editor-foreground);
 }
 
 .editor-welcome p {
@@ -118,6 +142,33 @@
   max-width: 480px;
   line-height: 1.6;
 }
+
+.editor-welcome .welcome-hint {
+  font-size: 12px;
+  color: var(--vscode-disabledForeground);
+  margin-top: 16px;
+}
+
+/* The hydra's heads — target languages in their own accents */
+.welcome-heads {
+  display: flex;
+  gap: 8px;
+  margin: 14px 0 10px;
+}
+
+.welcome-head {
+  font-family: var(--monaco-monospace-font);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 12px;
+  border-radius: 20px;
+  border: 1px solid;
+}
+
+.welcome-head-java   { color: var(--hydra-lang-java);   border-color: color-mix(in srgb, var(--hydra-lang-java) 45%, transparent);   background: color-mix(in srgb, var(--hydra-lang-java) 10%, transparent); }
+.welcome-head-c      { color: var(--hydra-lang-c);      border-color: color-mix(in srgb, var(--hydra-lang-c) 45%, transparent);      background: color-mix(in srgb, var(--hydra-lang-c) 10%, transparent); }
+.welcome-head-cpp    { color: var(--hydra-lang-cpp);    border-color: color-mix(in srgb, var(--hydra-lang-cpp) 45%, transparent);    background: color-mix(in srgb, var(--hydra-lang-cpp) 10%, transparent); }
+.welcome-head-python { color: var(--hydra-lang-python); border-color: color-mix(in srgb, var(--hydra-lang-python) 45%, transparent); background: color-mix(in srgb, var(--hydra-lang-python) 10%, transparent); }
 
 .editor-welcome .demo-card {
   margin-top: 24px;
@@ -152,7 +203,7 @@
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  background: #1e1e2e;
+  background: var(--vscode-editor-background, #171c26);
   overflow: hidden;
 }
 
@@ -161,15 +212,15 @@
   align-items: center;
   justify-content: space-between;
   padding: 8px 14px;
-  background: #1a1a30;
-  border-bottom: 1px solid #2a2a4a;
+  background: var(--vscode-sideBar-background, #141822);
+  border-bottom: 1px solid var(--vscode-editorWidget-border, #232a38);
   flex-shrink: 0;
 }
 
 .block-canvas-title {
   font-size: 13px;
   font-weight: 700;
-  color: #c8c8e8;
+  color: var(--vscode-foreground, #ccd4e2);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -191,11 +242,10 @@
 .bc-btn:hover { filter: brightness(1.15); transform: translateY(-1px); }
 .bc-btn:active { transform: translateY(0); }
 .bc-btn .svg-icon svg { width: 14px; height: 14px; stroke-width: 2; }
-.bc-btn-clear { background: #3a3a5c; color: #ccc; }
+.bc-btn-clear { background: rgba(148, 163, 190, 0.12); color: var(--vscode-foreground, #ccd4e2); }
 .bc-btn-gen {
-  background: linear-gradient(135deg, #6a3de8, #5533aa);
-  color: #fff;
-  box-shadow: 0 2px 0 #3a1f7a, 0 2px 8px rgba(85, 51, 170, 0.3);
+  background: var(--hydra-accent);
+  color: #10141c;
 }
 
 .bc-workspace {
@@ -204,14 +254,14 @@
   overflow: hidden;
 }
 .bc-workspace > .blocklySvg {
-  background-color: #1e1e2e !important;
+  background-color: var(--vscode-editor-background, #171c26) !important;
 }
 
 /* ── Blockly dark theme overrides ── */
 .blocklyToolboxDiv {
-  background-color: #1a1a30 !important;
-  color: #c8c8e8 !important;
-  border-right: 1px solid #2a2a4a !important;
+  background-color: var(--vscode-sideBar-background, #141822) !important;
+  color: var(--vscode-foreground, #ccd4e2) !important;
+  border-right: 1px solid var(--vscode-sideBar-border, #1b202b) !important;
 }
 .blocklyTreeRow {
   height: 32px;
@@ -224,40 +274,40 @@
   cursor: pointer;
 }
 .blocklyTreeRow:hover {
-  background-color: rgba(255,255,255,0.05) !important;
+  background-color: rgba(148, 163, 190, 0.07) !important;
 }
 .blocklyTreeSelected {
-  background-color: rgba(124,124,255,0.12) !important;
+  background-color: var(--hydra-accent-soft) !important;
 }
 .blocklyTreeIcon { display: none; }
-.blocklyTreeSeparator { border-bottom: 1px solid #2a2a4a; }
+.blocklyTreeSeparator { border-bottom: 1px solid var(--vscode-editorWidget-border, #232a38); }
 .blocklyFlyoutBackground {
-  fill: #16162a !important;
+  fill: #12161f !important;
 }
 .blocklyMainBackground {
-  fill: #1e1e2e !important;
+  fill: #171c26 !important;
   stroke-width: 0;
 }
 .blocklyScrollbarHandle {
-  fill: #3a3a5c !important;
+  fill: #2b3242 !important;
 }
 .blocklyScrollbarBackground:hover .blocklyScrollbarHandle {
-  fill: #5a5a7a !important;
+  fill: #3d4558 !important;
 }
 .blocklyDropDownDiv {
-  background: #1a1a30 !important;
-  border: 1px solid #2a2a4a !important;
+  background: var(--vscode-menu-background, #1a2029) !important;
+  border: 1px solid var(--vscode-menu-border, #232a38) !important;
 }
 .blocklyDropDownDiv .blocklyDropDownArrow {
-  border-bottom-color: #1a1a30 !important;
+  border-bottom-color: var(--vscode-menu-background, #1a2029) !important;
 }
 .blocklyWidgetDiv .goog-menu {
-  background: #1a1a30 !important;
-  border: 1px solid #2a2a4a !important;
-  color: #c8c8e8 !important;
+  background: var(--vscode-menu-background, #1a2029) !important;
+  border: 1px solid var(--vscode-menu-border, #232a38) !important;
+  color: var(--vscode-foreground, #ccd4e2) !important;
 }
 .blocklyWidgetDiv .goog-menuitem.goog-menuitem-highlight {
-  background: rgba(124,124,255,0.2) !important;
+  background: var(--hydra-accent-soft) !important;
 }
 .blocklyZoom > image, .blocklyTrash image {
   opacity: 0.6;

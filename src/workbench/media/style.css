@@ -3,6 +3,29 @@
   box-sizing: border-box;
 }
 
+/* ── Hydra accent system ─────────────────────────────────────────────────────
+   One body (Spanish), many heads (languages). The active programming language
+   tints the whole workbench through --hydra-accent: activity bar indicator,
+   active tab underline, statusbar language chip, focus rings, run button.
+   statusbarPart.ts keeps data-hydra-lang on <html> in sync. */
+:root {
+  --hydra-accent:      #3ecfae; /* brand teal — resting state */
+  --hydra-accent-soft: rgba(62, 207, 174, 0.13);
+  --hydra-success:     #4ecb8d;
+  --hydra-warn:        #e5c15c;
+  --hydra-danger:      #f26d6d;
+
+  --hydra-lang-java:   #e8a13c;
+  --hydra-lang-c:      #6ca8ff;
+  --hydra-lang-cpp:    #b18cf5;
+  --hydra-lang-python: #4ecb8d;
+}
+
+:root[data-hydra-lang="java"]   { --hydra-accent: var(--hydra-lang-java);   --hydra-accent-soft: rgba(232, 161, 60, 0.13); }
+:root[data-hydra-lang="c"]      { --hydra-accent: var(--hydra-lang-c);      --hydra-accent-soft: rgba(108, 168, 255, 0.13); }
+:root[data-hydra-lang="cpp"]    { --hydra-accent: var(--hydra-lang-cpp);    --hydra-accent-soft: rgba(177, 140, 245, 0.13); }
+:root[data-hydra-lang="python"] { --hydra-accent: var(--hydra-lang-python); --hydra-accent-soft: rgba(78, 203, 141, 0.13); }
+
 html {
   height: 100%;
 }
@@ -16,7 +39,7 @@ body {
   font-size: 11px;
   user-select: none;
   -webkit-user-select: none;
-  background-color: var(--vscode-workbench-background);
+  background-color: var(--vscode-workbench-background, #12161f);
 }
 
 #workbench-root {
@@ -27,10 +50,11 @@ body {
 /* ── Font system ── */
 .hydra-workbench {
   --monaco-monospace-font: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', Consolas, 'Courier New', monospace;
+  --hydra-ui-font: 'Segoe UI Variable Text', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 .hydra-workbench, .hydra-workbench input, .hydra-workbench textarea {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: var(--hydra-ui-font);
 }
 
 .hydra-workbench .monaco-editor,
@@ -61,10 +85,25 @@ body {
   background-color: var(--vscode-selection-background);
 }
 
+/* ── Focus ── */
+.hydra-workbench :focus-visible {
+  outline: 1px solid var(--hydra-accent);
+  outline-offset: -1px;
+}
+
+/* ── Motion ── */
+@media (prefers-reduced-motion: reduce) {
+  .hydra-workbench *, .hydra-workbench *::before, .hydra-workbench *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 /* ── Scrollbars ── */
 .hydra-workbench ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 9px;
+  height: 9px;
 }
 
 .hydra-workbench ::-webkit-scrollbar-thumb {

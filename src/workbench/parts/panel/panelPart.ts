@@ -32,6 +32,14 @@ export class PanelPart extends Part {
     this._activateTab(id);
   }
 
+  /** Switches to the Terminal tab and types `command` into its real, interactive shell —
+   *  used for runs (currently C/C++ via WSL) that need genuine stdin support, which the
+   *  isolated run:execute pipe can't provide. */
+  async runInTerminal(command: string): Promise<void> {
+    this._activateTab('terminal');
+    await this._terminalPanel?.sendCommand(command);
+  }
+
   clearOutput(): void {
     const tab = this._tabs.find(t => t.id === 'output');
     if (tab) tab.content = '';

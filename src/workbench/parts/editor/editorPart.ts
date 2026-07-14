@@ -7,6 +7,7 @@ import { TranspilerEngine } from '../../../languages/index.js';
 import { ensureLanguage, getMonacoLangId } from './monacoLanguage.js';
 import { getExtToLangMap } from '../sidebar/extensionLoader.js';
 import { parseCodeToBlocks } from './codeParser.js';
+import type { ExtensionRegistry } from '../sidebar/extensionRegistry.js';
 
 import {
   iconFile, iconFileCode, iconClose, iconTranspile,
@@ -40,6 +41,8 @@ export class EditorPart extends Part {
   private _outputVisible = false;
   private _currentProgLang = 'java';
   private _currentHumanLang = 'es';
+  private _untitledCounter = 1;
+  private _extensionRegistry: ExtensionRegistry | null = null;
 
   // ── Block canvas state ────────────────────────────────────────────────────
   private _blocksMode = false;
@@ -48,6 +51,8 @@ export class EditorPart extends Part {
   constructor() {
     super('editor', { hasTitle: false });
   }
+
+  setExtensionRegistry(registry: ExtensionRegistry): void { this._extensionRegistry = registry; }
 
   // ── Public API ─────────────────────────────────────────────────────────────
 
@@ -59,12 +64,46 @@ export class EditorPart extends Part {
     return this._tabs.find(t => t.id === this._activeTabId)?.progLang ?? this._currentProgLang;
   }
 
+  /** The active tab's on-disk path, or null for an unsaved/untitled tab. Save/Save As must
+   *  key off this (per-tab) rather than a single shared field — otherwise saving with
+   *  multiple tabs open silently targets whichever tab was last opened/created, not
+   *  necessarily the one currently visible and being saved. */
+  getActiveTabPath(): string | null {
+    return this._tabs.find(t => t.id === this._activeTabId)?.path ?? null;
+  }
+
+  /** Records where the active tab was just saved to (Save As on a previously-unsaved tab),
+   *  so a subsequent plain Save on the same tab writes straight back to that path instead
+   *  of prompting Save As again — and updates the tab's displayed label to match. */
+  setActiveTabPath(path: string, label: string): void {
+    const tab = this._tabs.find(t => t.id === this._activeTabId);
+    if (!tab) return;
+    tab.path = path;
+    tab.label = label;
+    tab.icon = this._fileIcon(label);
+    const labelEl = this._tabElements.get(tab.id)?.querySelector('.tab-label');
+    if (labelEl) labelEl.textContent = label;
+  }
+
   getCurrentHumanLang(): string {
     return this._currentHumanLang;
   }
 
   setContent(text: string): void {
     this._monacoEditor?.setValue(text);
+  }
+
+  /** Opens a brand-new, unsaved tab (Ctrl+N / File > New File). Unlike setContent(), this
+   *  works correctly from any state, including the initial welcome screen where no Monaco
+   *  editor is mounted yet — setContent() alone would silently no-op there. */
+  newFile(): void {
+    const id = `untitled-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const label = `Untitled-${this._untitledCounter++}`;
+    const tab: OpenTab = { id, path: null, label, icon: 'file-code', progLang: this._currentProgLang };
+    this._tabs.push(tab);
+    this._tabContents.set(id, '');
+    this._addTab(tab);
+    this._activateTab(id);
   }
 
   setLanguage(progLang: string, humanLang: string): void {
@@ -116,18 +155,36 @@ export class EditorPart extends Part {
 
   setBlocksMode(enabled: boolean): void {
     if (this._blocksMode === enabled) return;
-    this._blocksMode = enabled;
     if (!this._bodyContainer) return;
 
     if (enabled) {
       const code = this._monacoEditor?.getValue() ?? this._tabContents.get(this._activeTabId) ?? '';
-      const parsed = parseCodeToBlocks(code);
+      let parsed: import('./blockModel.js').Block[];
+      try {
+        parsed = parseCodeToBlocks(code);
+      } catch (e) {
+        console.error('Failed to parse code into blocks:', e);
+        alert('No se pudo cambiar a modo de bloques: el código es demasiado complejo o tiene un formato inesperado.');
+        return; // stay in text mode; _blocksMode is untouched and no canvas is shown
+      }
 
+      this._blocksMode = true;
       if (this._monacoEditor) { this._monacoEditor.dispose(); this._monacoEditor = null; }
       if (this._outputEditor) { this._outputEditor.dispose(); this._outputEditor = null; }
       this._bodyContainer.innerHTML = '';
       this._showBlockCanvas(parsed);
     } else {
+      // Always persist the live block graph before leaving Blocks mode, regardless
+      // of which UI path triggered the exit (in-canvas button or activity-bar icon).
+      let code: string | null = null;
+      try {
+        code = this._blocklySession.getCode();
+      } catch (e) {
+        console.error('Failed to generate code from blocks; keeping last saved content:', e);
+      }
+      if (code !== null) this._tabContents.set(this._activeTabId, code);
+
+      this._blocksMode = false;
       this._blocklySession.dispose();
       this._bodyContainer.innerHTML = '';
       const tab = this._tabs.find(t => t.id === this._activeTabId);
@@ -164,6 +221,7 @@ export class EditorPart extends Part {
     icon.style.fontSize = '13px';
     append(tabEl, icon);
     const label = document.createElement('span');
+    label.className = 'tab-label';
     label.textContent = tab.label;
     append(tabEl, label);
     const close = $('div', ['tab-close']);
@@ -209,17 +267,35 @@ export class EditorPart extends Part {
     if (!this._bodyContainer) return;
     const welcome = $('div', ['editor-welcome']);
     append(this._bodyContainer, welcome);
-    const h1 = document.createElement('h1'); h1.textContent = 'HydraCode';
+
+    const h1 = document.createElement('h1');
+    h1.className = 'welcome-wordmark';
+    h1.textContent = 'HydraCode';
     append(welcome, h1);
-    const p1 = document.createElement('p'); p1.textContent = 'El editor de código multilenguaje.';
+
+    const p1 = document.createElement('p');
+    p1.textContent = 'Escribe en español. Compila en cualquiera de sus cabezas.';
     append(welcome, p1);
-    const p2 = document.createElement('p'); p2.textContent = 'Abre un archivo o carpeta desde el explorador lateral.';
-    append(welcome, p2);
+
+    // The hydra's heads: one chip per target language, in its accent color.
+    const heads = $('div', ['welcome-heads']);
+    for (const [id, label] of [['java', 'Java'], ['c', 'C'], ['cpp', 'C++'], ['python', 'Python']]) {
+      const chip = $('span', ['welcome-head', `welcome-head-${id}`]);
+      chip.textContent = label;
+      append(heads, chip);
+    }
+    append(welcome, heads);
+
     const demo = $('div', ['demo-card']);
     demo.textContent = ['// Java en Español:','clase HolaMundo {','    publico estatico vacio principal(cadena[] args) {','        sistema.imprimir("Hola Mundo!");','    }','}'].join('\n');
     const arrow = document.createElement('div');
     arrow.className = 'arrow'; arrow.textContent = '→ Transpila a Java estándar automáticamente';
     append(demo, arrow); append(welcome, demo);
+
+    const p2 = document.createElement('p');
+    p2.className = 'welcome-hint';
+    p2.textContent = 'Abre un archivo o carpeta desde el explorador lateral para empezar.';
+    append(welcome, p2);
   }
 
   // ── Transpile editor ───────────────────────────────────────────────────────
@@ -345,16 +421,9 @@ export class EditorPart extends Part {
     const genBtn = $('button', ['bc-btn', 'bc-btn-gen']);
     append(genBtn, createIconElement(iconLightning()));
     genBtn.append(' Generar Código');
-    genBtn.addEventListener('click', () => {
-      const code = this._blocklySession.getCode();
-      this._blocklySession.dispose();
-      this._blocksMode = false;
-      if (this._bodyContainer) this._bodyContainer.innerHTML = '';
-      const tab = this._tabs.find(t => t.id === this._activeTabId);
-      const progLang = tab?.progLang ?? 'java';
-      this._tabContents.set(this._activeTabId, code);
-      this._showTranspileEditor(code, progLang);
-    });
+    // Route through setBlocksMode(false) so there is exactly one exit path —
+    // it already generates code from the live session and saves it before switching back.
+    genBtn.addEventListener('click', () => this.setBlocksMode(false));
     append(actions, genBtn);
     append(header, actions);
     append(canvas, header);
@@ -371,6 +440,10 @@ export class EditorPart extends Part {
   private _detectProgLang(filename: string): string {
     const ext = '.' + (filename.split('.').pop()?.toLowerCase() ?? '');
     return getExtToLangMap()[ext]
+      // Marketplace-installed languages (e.g. Go, Rust) aren't in the bundled
+      // extensionLoader map above — they're only known to ExtensionRegistry, since
+      // that's where their file-extension associations get attached on install.
+      ?? this._extensionRegistry?.getLanguageForExtension(ext)
       ?? ({ '.java': 'java', '.c': 'c', '.cpp': 'cpp', '.h': 'cpp', '.py': 'python' } as Record<string, string>)[ext]
       ?? '';
   }

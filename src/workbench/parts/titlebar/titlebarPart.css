@@ -45,26 +45,30 @@
 
 .menu-item {
   display: block;
-  padding: 4px 8px;
+  padding: 4px 9px;
   font-size: 12px;
   cursor: pointer;
-  border-radius: 3px;
+  border-radius: 4px;
   -webkit-app-region: no-drag;
   position: relative;
   z-index: 1001;
+  transition: background-color 0.08s, color 0.08s;
 }
 
 .menu-item:hover {
   background-color: var(--vscode-list-hoverBackground);
+  color: var(--vscode-foreground);
 }
 
 /* Dropdown */
 .menu-dropdown {
   display: none;
-  position: absolute;
-  top: 100%;
-  left: 0;
+  /* Rendered as a child of document.body (see titlebarPart.ts), positioned in viewport
+     coordinates via left/top set from getBoundingClientRect() on open — fixed, not
+     absolute, since it's no longer nested inside a positioned ancestor. */
+  position: fixed;
   background-color: var(--vscode-menu-background, #252526);
+  color: var(--vscode-menu-foreground, #cccccc);
   border: 1px solid var(--vscode-menu-border, #454545);
   border-radius: 3px;
   min-width: 180px;
@@ -82,6 +86,7 @@
 .menu-dropdown-item {
   padding: 5px 16px;
   font-size: 12px;
+  color: var(--vscode-menu-foreground, #cccccc);
   cursor: pointer;
   white-space: nowrap;
   -webkit-app-region: no-drag;
@@ -102,9 +107,11 @@
 .titlebar-center {
   flex: 1;
   text-align: center;
+  font-family: var(--monaco-monospace-font);
   font-size: 12px;
-  font-weight: 500;
-  opacity: 0.7;
+  font-weight: 450;
+  letter-spacing: 0.3px;
+  opacity: 0.65;
   pointer-events: none;
 }
 
@@ -131,7 +138,7 @@
 }
 
 .titlebar-control:hover {
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: rgba(148, 163, 190, 0.12);
 }
 
 .titlebar-control.close:hover {

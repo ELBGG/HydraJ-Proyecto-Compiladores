@@ -1,8 +1,9 @@
 import { $, append, clearNode } from '../../../base/browser/dom.js';
+import { DisposableStore } from '../../../base/common/lifecycle.js';
 import { STTRegistry } from './sttRegistry.js';
 import type { STTEngine, STTStatus } from './sttEngine.js';
 import type { EditorPart } from '../editor/editorPart.js';
-import { iconMic, iconRecord, iconStop, iconDownload, iconLoading, iconInsert, iconClose, iconCross, createIconElement } from '../../../base/browser/icons.js';
+import { iconMic, iconStop, iconInsert, iconClose, iconCross, createIconElement } from '../../../base/browser/icons.js';
 
 export class STTPanel {
   private _editor: EditorPart | null = null;
@@ -13,18 +14,26 @@ export class STTPanel {
   private _progressWrap: HTMLElement | null = null;
   private _progressBar: HTMLElement | null = null;
   private _recordBtn: HTMLButtonElement | null = null;
+  private readonly _disposables = new DisposableStore();
 
   constructor(
     private readonly _container: HTMLElement,
     private readonly _engine: STTEngine,
   ) {
-    this._engine.onStatus(s => this._onStatus(s));
-    this._engine.onProgress(p => this._onProgress(p));
-    this._engine.onResult(({ partial, final }) => this._onResult(partial, final));
+    this._disposables.add(this._engine.onStatus(s => this._onStatus(s)));
+    this._disposables.add(this._engine.onProgress(p => this._onProgress(p)));
+    this._disposables.add(this._engine.onResult(({ partial, final }) => this._onResult(partial, final)));
     this._render();
   }
 
   setEditor(editor: EditorPart): void { this._editor = editor; }
+
+  /** Disposes the subscriptions made onto the long-lived sttEngine singleton. Must be called
+   *  before discarding an STTPanel instance (e.g. when re-rendering the STT sidebar section) —
+   *  otherwise each visit accumulates another set of listeners reacting on stale/detached DOM. */
+  dispose(): void {
+    this._disposables.dispose();
+  }
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -144,6 +153,7 @@ export class STTPanel {
       downloading: 'Descargando modelo...',
       loading:     'Cargando modelo en memoria...',
       ready:       'Listo para grabar',
+      starting:    'Iniciando grabación...',
       recording:   'Grabando...',
       error:       'Error — haz clic para reintentar',
     };

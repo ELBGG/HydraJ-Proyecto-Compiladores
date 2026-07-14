@@ -10,12 +10,13 @@
   display: flex;
   align-items: center;
   height: 100%;
-  padding: 0 4px;
+  padding: 0 6px;
 }
 
 .statusbar-left {
   display: flex;
   align-items: center;
+  gap: 2px;
   flex: 1;
   min-width: 0;
 }
@@ -23,29 +24,105 @@
 .statusbar-right {
   display: flex;
   align-items: center;
+  gap: 2px;
 }
 
 .statusbar-item {
   display: flex;
   align-items: center;
-  height: 22px;
-  padding: 0 8px;
+  height: 18px;
+  padding: 0 7px;
   cursor: pointer;
   white-space: nowrap;
   gap: 4px;
-  font-size: 12px;
-  transition: background-color 0.08s;
+  font-family: var(--monaco-monospace-font);
+  font-size: 11px;
+  border-radius: 3px;
+  transition: background-color 0.08s, color 0.08s;
 }
 .statusbar-item .svg-icon svg {
-  width: 13px;
-  height: 13px;
+  width: 12px;
+  height: 12px;
   stroke-width: 1.8;
 }
 
 .statusbar-item:hover {
   background-color: var(--vscode-statusBarItem-hoverBackground);
+  color: var(--vscode-foreground);
 }
 
 .statusbar-item:active {
   background-color: var(--vscode-statusBarItem-activeBackground);
+}
+
+/* Active-language chip — the accent's home in the statusbar */
+.statusbar-item.statusbar-lang-chip {
+  color: var(--hydra-accent);
+  background-color: var(--hydra-accent-soft);
+  font-weight: 600;
+}
+
+.statusbar-item.statusbar-lang-chip:hover {
+  color: var(--hydra-accent);
+  background-color: var(--hydra-accent-soft);
+  filter: brightness(1.2);
+}
+
+/* Language mode picker — a searchable quick-pick, anchored just above the status
+   bar (same visual language as titlebar's go-to-file-overlay). */
+.lang-picker-overlay {
+  position: fixed;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 360px;
+  background: var(--vscode-menu-background, #252526);
+  border: 1px solid var(--vscode-menu-border, #454545);
+  border-radius: 6px;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.5);
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.lang-picker-input {
+  padding: 10px 14px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--vscode-menu-border, #454545);
+  color: var(--vscode-foreground);
+  font-size: 13px;
+  outline: none;
+}
+
+.lang-picker-list {
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.lang-picker-item {
+  padding: 6px 14px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lang-picker-item:hover {
+  background: var(--vscode-list-activeSelectionBackground, #094771);
+  color: var(--vscode-list-activeSelectionForeground, #fff);
+}
+
+.lang-picker-item.active {
+  color: var(--hydra-accent);
+  font-weight: 600;
+}
+
+.lang-picker-empty {
+  padding: 10px 14px;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground, #888);
+  font-style: italic;
 }

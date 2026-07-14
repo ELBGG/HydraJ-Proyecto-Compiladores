@@ -74,9 +74,20 @@ export class ActivitybarPart extends Part {
   }
 
   private _onIconClick(id: string): void {
+    this.setActiveIcon(id);
+    this._onIconActivate.fire(id);
+  }
+
+  /**
+   * Sets which icon is shown as active. Used for the optimistic state on
+   * click, and exposed so callers (e.g. workbench.ts, which decides whether
+   * a repeat click on the active icon opened or collapsed the section) can
+   * correct the visual state after the fact — pass `null` when the section
+   * ended up collapsed rather than activated.
+   */
+  setActiveIcon(id: string | null): void {
     this._iconElements.forEach((el, key) => el.classList.toggle('active', key === id));
     this._activeId = id;
-    this._onIconActivate.fire(id);
   }
 
   layout(width: number, height: number): void {

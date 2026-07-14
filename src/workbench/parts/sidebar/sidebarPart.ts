@@ -75,7 +75,7 @@ export class SidebarPart extends Part {
   }
 
   async openFolder(): Promise<void> {
-    const api = (window as any).electronAPI;
+    const api = window.electronAPI;
     if (!api) return;
     const result = await api.folderOps.open();
     if (result.canceled) return;
@@ -149,7 +149,7 @@ export class SidebarPart extends Part {
     container: HTMLElement,
     depth: number,
   ): Promise<void> {
-    const api = (window as any).electronAPI;
+    const api = window.electronAPI;
     if (!api) return;
 
     const result = await api.folderOps.readDir(dirPath);
@@ -239,10 +239,6 @@ export class SidebarPart extends Part {
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
-  private _fileIcon(name: string): string {
-    return 'file';
-  }
-
   private _makeFileIcon(name: string): HTMLElement {
     const ext = name.split('.').pop()?.toLowerCase() ?? '';
     const codeExts = ['java', 'c', 'cpp', 'h', 'js', 'ts', 'jsx', 'tsx', 'py', 'rs', 'go'];
@@ -257,7 +253,10 @@ export class SidebarPart extends Part {
       this._sttEngine = new STTEngine();
     }
 
-    // Re-create panel each time section is shown (DOM was cleared)
+    // Dispose the previous panel's listeners before re-creating (DOM was cleared) — mirrors
+    // _renderDebug()'s RunPanel disposal, so switching to STT and back doesn't accumulate
+    // stale listeners on the long-lived sttEngine singleton.
+    this._sttPanel?.dispose();
     this._sttPanel = new STTPanel(this._contentEl, this._sttEngine);
     if (this._editor) this._sttPanel.setEditor(this._editor);
   }

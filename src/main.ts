@@ -12,7 +12,7 @@ function main(): void {
 
   registerAllLanguages();
 
-  (window as any).HydraCode = {
+  window.HydraCode = {
     LanguageRegistry,
     TranspilerEngine: TranspilerEngine,
     transpiler,

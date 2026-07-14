@@ -1,6 +1,6 @@
 import './statusbarPart.css';
 import { Part } from '../../part.js';
-import { $, append } from '../../../base/browser/dom.js';
+import { $, append, clearNode } from '../../../base/browser/dom.js';
 import { LanguageRegistry } from '../../../languages/index.js';
 import { Emitter } from '../../../base/common/event.js';
 import { iconGlobe, iconBranch, iconPencil, createIconElement } from '../../../base/browser/icons.js';
@@ -9,6 +9,7 @@ export class StatusbarPart extends Part {
   private _progLangEl!: HTMLElement;
   private _humanLangEl!: HTMLElement;
   private _transpileStatusEl!: HTMLElement;
+  private _langPickerOverlay: HTMLElement | null = null;
 
   private _progLangs: string[] = ['java'];
   private _currentProgLang = 'java';
@@ -77,10 +78,10 @@ export class StatusbarPart extends Part {
     branchItem.title = 'Source Control (main)';
     append(left, branchItem);
 
-    this._progLangEl = $('div', ['statusbar-item']);
-    this._progLangEl.title = 'Click to change programming language';
+    this._progLangEl = $('div', ['statusbar-item', 'statusbar-lang-chip']);
+    this._progLangEl.title = 'Seleccionar lenguaje de programación';
     append(left, this._progLangEl);
-    this._progLangEl.addEventListener('click', () => this._cycleProgLang());
+    this._progLangEl.addEventListener('click', (e) => { e.stopPropagation(); this._showLangPicker(); });
 
     this._humanLangEl = $('div', ['statusbar-item']);
     this._humanLangEl.title = 'Click to change human language';
@@ -124,6 +125,8 @@ export class StatusbarPart extends Part {
   }
 
   private _updateLanguageDisplay(): void {
+    // Language-reactive accent: style.css maps data-hydra-lang to --hydra-accent.
+    document.documentElement.setAttribute('data-hydra-lang', this._currentProgLang);
     const displayName = StatusbarPart._DISPLAY_NAMES[this._currentProgLang] ?? this._currentProgLang;
     const humanNames: Record<string, string> = { en: 'EN', es: 'ES' };
     const progIcon = createIconElement(iconPencil());
@@ -137,12 +140,88 @@ export class StatusbarPart extends Part {
     this._humanLangEl.append(` ${humanNames[this._currentHumanLang] ?? this._currentHumanLang}`);
   }
 
-  private _cycleProgLang(): void {
+  // ── Language mode picker ──────────────────────────────────────────────────
+  // A searchable quick-pick (à la VS Code's "Select Language Mode"), not a plain
+  // click-to-cycle — with more than a couple of installed languages (which is now the
+  // normal case since Extensions can pull in nearly anything Monaco supports),
+  // stepping through them one click at a time stops scaling.
+
+  private _showLangPicker(): void {
+    if (this._langPickerOverlay) {
+      this._langPickerOverlay.remove();
+      this._langPickerOverlay = null;
+      return;
+    }
     if (this._progLangs.length === 0) return;
-    const idx = this._progLangs.indexOf(this._currentProgLang);
-    this._currentProgLang = this._progLangs[(idx + 1) % this._progLangs.length];
-    this._updateLanguageDisplay();
-    this._onLanguageChange.fire({ progLang: this._currentProgLang, humanLang: this._currentHumanLang });
+
+    const overlay = $('div', ['lang-picker-overlay']);
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = 'Seleccionar lenguaje de programación...';
+    input.className = 'lang-picker-input';
+    append(overlay, input);
+
+    const list = $('div', ['lang-picker-list']);
+
+    const displayName = (lang: string) => StatusbarPart._DISPLAY_NAMES[lang] ?? lang;
+
+    const selectLang = (lang: string) => {
+      this._currentProgLang = lang;
+      this._updateLanguageDisplay();
+      this._onLanguageChange.fire({ progLang: lang, humanLang: this._currentHumanLang });
+      overlay.remove();
+      this._langPickerOverlay = null;
+    };
+
+    const renderList = (filter: string) => {
+      clearNode(list);
+      const filterLower = filter.toLowerCase();
+      const shown = filter
+        ? this._progLangs.filter(l => displayName(l).toLowerCase().includes(filterLower))
+        : this._progLangs;
+      for (const lang of shown) {
+        const item = $('div', ['lang-picker-item']);
+        if (lang === this._currentProgLang) item.classList.add('active');
+        item.textContent = displayName(lang);
+        item.addEventListener('click', (e) => { e.stopPropagation(); selectLang(lang); });
+        append(list, item);
+      }
+      if (shown.length === 0) {
+        const empty = $('div', ['lang-picker-empty']);
+        empty.textContent = 'Sin coincidencias.';
+        append(list, empty);
+      }
+    };
+
+    renderList('');
+    input.addEventListener('input', () => renderList(input.value));
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { overlay.remove(); this._langPickerOverlay = null; }
+      else if (e.key === 'Enter') {
+        const first = this._progLangs.find(l => !input.value || displayName(l).toLowerCase().includes(input.value.toLowerCase()));
+        if (first) selectLang(first);
+      }
+    });
+    append(overlay, list);
+
+    document.body.appendChild(overlay);
+    this._langPickerOverlay = overlay;
+    input.focus();
+
+    setTimeout(() => {
+      const onDocumentClick = (e: MouseEvent) => {
+        if (this._langPickerOverlay !== overlay) {
+          document.removeEventListener('click', onDocumentClick);
+          return;
+        }
+        if (overlay.contains(e.target as Node)) return;
+        document.removeEventListener('click', onDocumentClick);
+        overlay.remove();
+        this._langPickerOverlay = null;
+      };
+      document.addEventListener('click', onDocumentClick);
+    }, 0);
   }
 
   private _cycleHumanLang(): void {

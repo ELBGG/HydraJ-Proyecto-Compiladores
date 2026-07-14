@@ -9,14 +9,22 @@
     "electron:dev": "concurrently -k \"vite\" \"wait-on http://localhost:5173 && set NODE_ENV=development&& electron .\"",
     "electron:build": "npm run build && set NODE_ENV=production&& electron .",
     "electron:preview": "set NODE_ENV=production&& electron .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src/",
     "build": "tsc && vite build",
     "preview": "vite preview"
   },
   "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.62.1",
+    "@typescript-eslint/parser": "^8.62.1",
     "concurrently": "^9.1.0",
     "electron": "^42.3.2",
+    "eslint": "^10.6.0",
     "typescript": "^5.7.0",
+    "typescript-eslint": "^8.62.1",
     "vite": "^6.0.0",
+    "vitest": "^4.1.9",
     "wait-on": "^8.0.0"
   },
   "dependencies": {
@@ -24,6 +32,7 @@
     "@xterm/xterm": "^5.5.0",
     "blockly": "^12.5.1",
     "monaco-editor": "^0.55.1",
+    "node-pty": "^1.1.0",
     "vosk-browser": "^0.0.8",
     "vscode-oniguruma": "^2.0.1",
     "vscode-textmate": "^9.3.2"

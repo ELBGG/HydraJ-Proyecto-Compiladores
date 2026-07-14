@@ -42,6 +42,19 @@
   background: var(--vscode-panel-border, #3c3c3c);
 }
 
+.sidebar-resize-handle {
+  flex-shrink: 0;
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  position: relative;
+  z-index: 10;
+}
+.sidebar-resize-handle:hover,
+.sidebar-resize-handle:active {
+  background: var(--vscode-panel-border, #3c3c3c);
+}
+
 .statusbar-container {
   flex-shrink: 0;
 }

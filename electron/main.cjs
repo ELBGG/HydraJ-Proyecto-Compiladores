@@ -14,14 +14,13 @@ function createWindow() {
     minWidth: 800,
     minHeight: 600,
     title: 'HydraCode',
-    backgroundColor: '#1e1e1e',
+    backgroundColor: '#12161f',
     frame: false,
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
     },
   });
 
@@ -53,8 +52,12 @@ ipcMain.handle('file:open', async () => {
   });
   if (result.canceled || result.filePaths.length === 0) return { canceled: true };
   const filePath = result.filePaths[0];
-  const content = await fs.promises.readFile(filePath, 'utf-8');
-  return { canceled: false, path: filePath, content };
+  try {
+    const content = await fs.promises.readFile(filePath, 'utf-8');
+    return { canceled: false, path: filePath, content };
+  } catch (err) {
+    return { canceled: true, error: String(err) };
+  }
 });
 
 ipcMain.handle('file:save', async (_event, { path: filePath, content }) => {
@@ -120,12 +123,34 @@ ipcMain.handle('folder:read-file', async (_event, { path: filePath }) => {
   }
 });
 
+// ── Path safety ───────────────────────────────────────────────────────────────
+// Resolves `name` against `baseDir`, stripping any directory-traversal
+// components, and rejects the result unless it stays contained within
+// `baseDir`. Returns the safe absolute path, or null if `name` is
+// invalid/would escape the base directory.
+function safeChildPath(baseDir, name) {
+  try {
+    const resolvedBase = path.resolve(baseDir);
+    const safeName = path.basename(String(name));
+    if (!safeName || safeName === '.' || safeName === '..') return null;
+    const resolvedPath = path.resolve(resolvedBase, safeName);
+    if (resolvedPath !== resolvedBase && !resolvedPath.startsWith(resolvedBase + path.sep)) {
+      return null;
+    }
+    return resolvedPath;
+  } catch {
+    return null;
+  }
+}
+
 // ── Vosk model cache ─────────────────────────────────────────────────────────
 ipcMain.handle('model:save', async (_event, { id, data }) => {
   try {
     const modelsDir = path.join(app.getPath('userData'), 'vosk-models');
     await fs.promises.mkdir(modelsDir, { recursive: true });
-    await fs.promises.writeFile(path.join(modelsDir, `${id}.zip`), Buffer.from(data));
+    const filePath = safeChildPath(modelsDir, `${id}.zip`);
+    if (!filePath) return { success: false, error: 'Invalid model id' };
+    await fs.promises.writeFile(filePath, Buffer.from(data));
     return { success: true };
   } catch (err) {
     return { success: false, error: String(err) };
@@ -134,7 +159,9 @@ ipcMain.handle('model:save', async (_event, { id, data }) => {
 
 ipcMain.handle('model:load', async (_event, { id }) => {
   try {
-    const filePath = path.join(app.getPath('userData'), 'vosk-models', `${id}.zip`);
+    const modelsDir = path.join(app.getPath('userData'), 'vosk-models');
+    const filePath = safeChildPath(modelsDir, `${id}.zip`);
+    if (!filePath) return { success: false };
     const buf = await fs.promises.readFile(filePath);
     return { success: true, data: new Uint8Array(buf) };
   } catch {
@@ -231,18 +258,26 @@ ipcMain.handle('run:execute', async (event, { code, language, debug }) => {
     proc.stderr.on('data', d => send(d.toString(), 'stderr'));
   };
 
-  const execWithTimeout = (proc, timeoutMs = 30000) => new Promise((resolve) => {
+  // Tracks `proc` as the single module-level "running process" so run:stop
+  // can kill it and so it's bounded by a timeout, regardless of whether
+  // `proc` is a compiler (javac/gcc/g++) or the actual execution step.
+  const execWithTimeout = (proc, timeoutMs = 30000, onError) => new Promise((resolve) => {
     _runningProcess = proc;
-    proc.on('close', code => { _runningProcess = null; resolve(code); });
-    proc.on('error', (err) => { send(`\nError al iniciar proceso: ${err.message}\n`, 'stderr'); _runningProcess = null; resolve(1); });
-    setTimeout(() => {
-      if (_runningProcess) {
-        try { _runningProcess.kill(); } catch {}
+    const timer = setTimeout(() => {
+      if (_runningProcess === proc) {
+        try { proc.kill(); } catch {}
         _runningProcess = null;
         send('\n[Tiempo de ejecución excedido (30s)]\n', 'info');
         resolve(1);
       }
     }, timeoutMs);
+    proc.on('close', code => { clearTimeout(timer); if (_runningProcess === proc) _runningProcess = null; resolve(code); });
+    proc.on('error', (err) => {
+      clearTimeout(timer);
+      if (onError) onError(err); else send(`\nError al iniciar proceso: ${err.message}\n`, 'stderr');
+      if (_runningProcess === proc) _runningProcess = null;
+      resolve(1);
+    });
   });
 
   try {
@@ -258,11 +293,10 @@ ipcMain.handle('run:execute', async (event, { code, language, debug }) => {
       javacArgs.push(filePath);
 
       send(`Compilando ${className}.java...\n`, 'info');
-      const compiled = await new Promise((resolve) => {
-        const proc = spawn('javac', javacArgs, { cwd: runDir });
-        attachOutput(proc);
-        proc.on('close', code => resolve(code));
-        proc.on('error', (err) => { send(`\nError: javac no encontrado. Asegúrate de tener JDK instalado.\n`, 'stderr'); resolve(1); });
+      const compileProc = spawn('javac', javacArgs, { cwd: runDir });
+      attachOutput(compileProc);
+      const compiled = await execWithTimeout(compileProc, 30000, () => {
+        send(`\nError: javac no encontrado. Asegúrate de tener JDK instalado.\n`, 'stderr');
       });
 
       if (compiled !== 0) return { exitCode: compiled };
@@ -299,11 +333,10 @@ ipcMain.handle('run:execute', async (event, { code, language, debug }) => {
       await fs.promises.writeFile(filePath, code, 'utf-8');
 
       send(`Compilando con ${compiler} (WSL)...\n`, 'info');
-      const compiled = await new Promise((resolve) => {
-        const proc = spawn('wsl.exe', [compiler, ...(debug ? ['-g'] : []), '-o', 'main', `main.${ext}`], { cwd: runDir, windowsHide: true, shell: false });
-        attachOutput(proc);
-        proc.on('close', code => resolve(code));
-        proc.on('error', () => { send('\nError al ejecutar WSL. Verifica que WSL esté correctamente instalado y tenga gcc/g++.\n', 'stderr'); resolve(1); });
+      const compileProc = spawn('wsl.exe', [compiler, ...(debug ? ['-g'] : []), '-o', 'main', `main.${ext}`], { cwd: runDir, windowsHide: true, shell: false });
+      attachOutput(compileProc);
+      const compiled = await execWithTimeout(compileProc, 30000, () => {
+        send('\nError al ejecutar WSL. Verifica que WSL esté correctamente instalado y tenga gcc/g++.\n', 'stderr');
       });
 
       if (compiled !== 0) return { exitCode: compiled };
@@ -312,13 +345,131 @@ ipcMain.handle('run:execute', async (event, { code, language, debug }) => {
       return { exitCode: await execWithTimeout(spawn('wsl.exe', ['./main'], { cwd: runDir, windowsHide: true })) };
     }
 
+    // ── JavaScript ──
+    if (language === 'javascript') {
+      const filePath = path.join(runDir, 'main.js');
+      await fs.promises.writeFile(filePath, code, 'utf-8');
+
+      send('Ejecutando con Node.js...\n\n', 'info');
+      const proc = spawn('node', [filePath], { cwd: runDir });
+      attachOutput(proc);
+      return { exitCode: await execWithTimeout(proc, 30000, () => {
+        send('\nError: Node.js no encontrado.\n', 'stderr');
+      }) };
+    }
+
+    // ── TypeScript (Node 22.6+ runs .ts directly via native type-stripping — no tsc needed) ──
+    if (language === 'typescript') {
+      const filePath = path.join(runDir, 'main.ts');
+      await fs.promises.writeFile(filePath, code, 'utf-8');
+
+      send('Ejecutando con Node.js (soporte nativo de TypeScript)...\n\n', 'info');
+      const proc = spawn('node', [filePath], { cwd: runDir });
+      attachOutput(proc);
+      return { exitCode: await execWithTimeout(proc, 30000, () => {
+        send('\nError: Node.js no encontrado, o tu versión no soporta TypeScript nativo (requiere Node 22.6+).\n', 'stderr');
+      }) };
+    }
+
+    // ── Go ──
+    if (language === 'go') {
+      const filePath = path.join(runDir, 'main.go');
+      await fs.promises.writeFile(filePath, code, 'utf-8');
+
+      send('Compilando y ejecutando con go run...\n\n', 'info');
+      const proc = spawn('go', ['run', filePath], { cwd: runDir });
+      attachOutput(proc);
+      return { exitCode: await execWithTimeout(proc, 30000, () => {
+        send('\nError: Go no encontrado. Instálalo desde https://go.dev/dl/\n', 'stderr');
+      }) };
+    }
+
+    // ── Rust ──
+    if (language === 'rust') {
+      const filePath = path.join(runDir, 'main.rs');
+      const outPath = path.join(runDir, 'main_rust.exe');
+      await fs.promises.writeFile(filePath, code, 'utf-8');
+
+      send('Compilando con rustc...\n', 'info');
+      const compileProc = spawn('rustc', [filePath, '-o', outPath], { cwd: runDir });
+      attachOutput(compileProc);
+      const compiled = await execWithTimeout(compileProc, 30000, () => {
+        send('\nError: rustc no encontrado. Instala Rust desde https://www.rust-lang.org/tools/install\n', 'stderr');
+      });
+      if (compiled !== 0) return { exitCode: compiled };
+
+      send('Ejecutando...\n\n', 'info');
+      const runProc = spawn(outPath, [], { cwd: runDir });
+      attachOutput(runProc);
+      return { exitCode: await execWithTimeout(runProc) };
+    }
+
+    // ── Ruby ──
+    if (language === 'ruby') {
+      const filePath = path.join(runDir, 'main.rb');
+      await fs.promises.writeFile(filePath, code, 'utf-8');
+
+      send('Ejecutando con Ruby...\n\n', 'info');
+      const proc = spawn('ruby', [filePath], { cwd: runDir });
+      attachOutput(proc);
+      return { exitCode: await execWithTimeout(proc, 30000, () => {
+        send('\nError: Ruby no encontrado. Instálalo desde https://www.ruby-lang.org/\n', 'stderr');
+      }) };
+    }
+
+    // ── PHP ──
+    if (language === 'php') {
+      const filePath = path.join(runDir, 'main.php');
+      await fs.promises.writeFile(filePath, code, 'utf-8');
+
+      send('Ejecutando con PHP...\n\n', 'info');
+      const proc = spawn('php', [filePath], { cwd: runDir });
+      attachOutput(proc);
+      return { exitCode: await execWithTimeout(proc, 30000, () => {
+        send('\nError: PHP no encontrado. Instálalo desde https://www.php.net/\n', 'stderr');
+      }) };
+    }
+
     // ── Unsupported language ──
-    send(`Lenguaje "${language}" no soportado para ejecución.\n`, 'stderr');
+    send(`Lenguaje "${language}" no soportado para ejecución todavía.\n`, 'stderr');
     return { exitCode: 1 };
   } catch (err) {
     send(`\nError interno: ${String(err)}\n`, 'stderr');
     return { exitCode: 1, error: String(err) };
   }
+});
+
+// Writes the C/C++ source and returns the shell command to compile+run it, so the
+// renderer can type it into the real interactive terminal (real PTY, real stdin) instead
+// of the isolated, non-interactive run:execute pipe — programs that call scanf/cin can't
+// be given input at all through that path, only through a genuine terminal.
+ipcMain.handle('run:prepare-terminal', async (_event, { code, language }) => {
+  if (language !== 'c' && language !== 'cpp') {
+    return { success: false, error: `Lenguaje "${language}" no soportado para ejecución en terminal.` };
+  }
+  const hasWsl = await checkWsl();
+  if (!hasWsl) {
+    return { success: false, error: 'WSL no está instalado. Instala WSL desde https://learn.microsoft.com/windows/wsl/install' };
+  }
+
+  const os = require('os');
+  const runDir = path.join(os.tmpdir(), 'hydracode-run');
+  try { await fs.promises.mkdir(runDir, { recursive: true }); } catch {}
+
+  const ext = language === 'c' ? 'c' : 'cpp';
+  const compiler = language === 'c' ? 'gcc' : 'g++';
+  const filePath = path.join(runDir, `main.${ext}`);
+  try {
+    await fs.promises.writeFile(filePath, code, 'utf-8');
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+
+  // 'cd' switches the terminal's own shell into runDir first; wsl.exe then picks that up
+  // as its working directory automatically (the same behavior run:execute's C/C++ path
+  // already relies on via spawn's `cwd` option), so `./main` resolves correctly.
+  const command = `cd '${runDir}'; wsl.exe bash -c "${compiler} main.${ext} -o main && ./main"`;
+  return { success: true, command };
 });
 
 ipcMain.handle('run:stop', async () => {
@@ -330,34 +481,36 @@ ipcMain.handle('run:stop', async () => {
 });
 
 // ── Interactive terminal ─────────────────────────────────────────────────────
+// Backed by node-pty (a real OS pseudo-terminal via ConPTY on Windows), not a
+// plain child_process over anonymous pipes — this gives the shell a real TTY,
+// so line editing, tab-completion, colors, Ctrl+C signal handling, and
+// character-at-a-time interactive programs (vim, password prompts, REPLs)
+// all work exactly as they would in a native terminal. No local echo/line
+// buffering is needed on the renderer side: the PTY itself echoes input.
+const pty = require('node-pty');
 const _terminals = new Map();
 
 ipcMain.handle('terminal:create', (event, { id, cwd }) => {
   try {
-    const { spawn: spawnProc } = require('child_process');
     const shell = process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/bash');
     const args  = process.platform === 'win32' ? ['-NoProfile', '-NoLogo'] : ['-i'];
 
-    const child = spawnProc(shell, args, {
+    const ptyProcess = pty.spawn(shell, args, {
+      name: 'xterm-256color',
+      cols: 80,
+      rows: 24,
       cwd: cwd || process.env.USERPROFILE || process.env.HOME || '.',
       env: { ...process.env, TERM: 'xterm-256color', FORCE_COLOR: '1' },
-      stdio: ['pipe', 'pipe', 'pipe'],
     });
 
-    _terminals.set(id, child);
+    _terminals.set(id, ptyProcess);
 
-    child.stdout.on('data', (data) => {
-      try { event.sender.send(`terminal:data:${id}`, data.toString('utf8')); } catch {}
+    ptyProcess.onData((data) => {
+      try { event.sender.send(`terminal:data:${id}`, data); } catch {}
     });
-    child.stderr.on('data', (data) => {
-      try { event.sender.send(`terminal:data:${id}`, data.toString('utf8')); } catch {}
-    });
-    child.on('exit', (code) => {
+    ptyProcess.onExit(({ exitCode }) => {
       _terminals.delete(id);
-      try { event.sender.send(`terminal:exit:${id}`, code ?? 0); } catch {}
-    });
-    child.on('error', (err) => {
-      try { event.sender.send(`terminal:data:${id}`, `\r\nError: ${err.message}\r\n`); } catch {}
+      try { event.sender.send(`terminal:exit:${id}`, exitCode ?? 0); } catch {}
     });
 
     return { success: true };
@@ -367,23 +520,29 @@ ipcMain.handle('terminal:create', (event, { id, cwd }) => {
 });
 
 ipcMain.handle('terminal:write', (_event, { id, data }) => {
-  const child = _terminals.get(id);
-  if (!child?.stdin?.writable) return { success: false };
-  try { child.stdin.write(data); return { success: true }; } catch { return { success: false }; }
+  const term = _terminals.get(id);
+  if (!term) return { success: false };
+  try { term.write(data); return { success: true }; } catch { return { success: false }; }
 });
 
-ipcMain.handle('terminal:resize', () => ({ success: true }));
+ipcMain.handle('terminal:resize', (_event, { id, cols, rows }) => {
+  const term = _terminals.get(id);
+  if (!term || !cols || !rows) return { success: false };
+  try { term.resize(cols, rows); return { success: true }; } catch { return { success: false }; }
+});
 
 ipcMain.handle('terminal:kill', (_event, { id }) => {
-  const child = _terminals.get(id);
-  if (!child) return { success: false };
-  try { child.kill(); _terminals.delete(id); return { success: true }; } catch { return { success: false }; }
+  const term = _terminals.get(id);
+  if (!term) return { success: false };
+  try { term.kill(); _terminals.delete(id); return { success: true }; } catch { return { success: false }; }
 });
 
 // ── Example mappings ──────────────────────────────────────────────────────────
 ipcMain.handle('extensions:read-example-mapping', async (_event, { filename }) => {
   try {
-    const filePath = path.join(__dirname, '..', 'examples', 'mappings', filename);
+    const mappingsDir = path.join(__dirname, '..', 'examples', 'mappings');
+    const filePath = safeChildPath(mappingsDir, filename);
+    if (!filePath) return { success: false, error: 'Invalid filename' };
     const content = await fs.promises.readFile(filePath, 'utf-8');
     return { success: true, content };
   } catch (err) {
@@ -412,6 +571,7 @@ ipcMain.handle('marketplace:query', async (_event, { text }) => {
         hostname: 'marketplace.visualstudio.com',
         path: '/_apis/public/gallery/extensionquery',
         method: 'POST',
+        timeout: 15000,
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json;api-version=7.2-preview.1',
@@ -428,6 +588,13 @@ ipcMain.handle('marketplace:query', async (_event, { text }) => {
         res.on('error', reject);
       });
       req.on('error', reject);
+      req.on('timeout', () => {
+        // No response within the timeout window (e.g. dead proxy/firewall
+        // black-hole) — the socket alone won't error out on its own, so
+        // destroy the request explicitly and settle the promise.
+        req.destroy();
+        reject(new Error('Marketplace request timed out'));
+      });
       req.write(body);
       req.end();
     });
@@ -454,8 +621,14 @@ ipcMain.handle('extensions:load', async () => {
     const filePath = path.join(app.getPath('userData'), 'hydracode-extensions.json');
     const content = await fs.promises.readFile(filePath, 'utf-8');
     return { success: true, extensions: JSON.parse(content) };
-  } catch {
-    return { success: true, extensions: [] };
+  } catch (err) {
+    if (err && err.code === 'ENOENT') {
+      // No extensions file yet — normal on first run.
+      return { success: true, extensions: [] };
+    }
+    // File exists but is unreadable/corrupt (bad JSON, permissions, etc.) —
+    // surface the error instead of silently wiping the installed list.
+    return { success: false, extensions: [], error: String(err) };
   }
 });
 

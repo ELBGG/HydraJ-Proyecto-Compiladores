@@ -29,7 +29,7 @@
 
 .activitybar-icon {
   width: 48px;
-  height: 48px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -45,7 +45,18 @@
 }
 
 .activitybar-icon.active {
-  color: var(--vscode-activityBar-foreground);
+  color: var(--hydra-accent);
+}
+
+.activitybar-icon .svg-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 7px;
+  transition: background-color 0.1s;
+}
+
+.activitybar-icon.active .svg-icon {
+  background-color: var(--hydra-accent-soft);
 }
 
 .activitybar-icon .svg-icon svg {
@@ -58,11 +69,11 @@
   content: '';
   position: absolute;
   left: 0;
-  top: 6px;
-  bottom: 6px;
-  width: 2px;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
   background-color: var(--vscode-activityBar-activeBorder);
-  border-radius: 0 1px 1px 0;
+  border-radius: 0 2px 2px 0;
 }
 
 .activitybar-icon .badge {

@@ -29,7 +29,8 @@
     "union": "union",
     "enum": "enum",
     "tamano_de": "sizeof",
-    "auto": "auto"
+    "auto": "auto",
+    "principal": "main"
   },
   "types": {
     "entero": "int",

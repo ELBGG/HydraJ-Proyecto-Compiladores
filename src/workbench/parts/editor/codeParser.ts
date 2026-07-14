@@ -1,21 +1,19 @@
-import type { Block, BlockKind, BlockType } from './blockModel.js';
+import type { Block, BlockType } from './blockModel.js';
 import { makeBlock } from './blockModel.js';
 
 // ── Language-neutral keyword maps ──────────────────────────────────────────
 
 const KW_CLASS    = /^(?:(?:publico|privado|protegido|public|private|protected)\s+)?(?:clase|class)\s+/;
 const KW_IF       = /^(?:si|if)\s*\(/;
-const KW_ELIF     = /^(?:sino_si|elif)\b/;
-const KW_ELSE     = /^}\s*(?:sino|else)\s*\{/;
 const KW_WHILE    = /^(?:mientras|while)\s*\(/;
 const KW_DO       = /^(?:hacer|do)\s*\{/;
 const KW_FOR      = /^(?:para|for)\s*\(/;
 const KW_SWITCH   = /^(?:cambiar|switch)\s*\(/;
 const KW_TRY      = /^(?:intentar|try)\s*\{/;
-const KW_CATCH    = /^}\s*(?:capturar|catch)\s*\(/;
-const KW_PRINT    = /^(?:sistema\.imprimir|System\.out\.println|print|lprinft|cout\s*<<)\s*\(/;
 const KW_RETURN   = /^(?:retornar|return)\b/;
 const KW_THROW    = /^(?:lanzar|throw)\b/;
+const KW_BREAK    = /^(?:romper|break)\s*;?\s*$/;
+const KW_CONTINUE = /^(?:continuar|continue)\s*;?\s*$/;
 const KW_MAIN     = /(?:publico\s+estatico\s+vacio\s+principal|public\s+static\s+void\s+main|(?:int|void)\s+main)\s*\(/;
 const KW_METHOD   = /^(?:publico|privado|protegido|public|private|protected)\s+/;
 
@@ -94,33 +92,52 @@ function isPythonClassDef(t: string): boolean {
 
 // ── Parse code string into a Block tree ──────────────────────────────────
 
+// Nesting deeper than this is treated as flat 'raw' content rather than recursed
+// into, so pathological/machine-generated input can't blow the real call stack.
+const MAX_NESTING_DEPTH = 200;
+
 export function parseCodeToBlocks(code: string): Block[] {
   const lines = code.split('\n');
-  return parseLines(lines);
+  return parseLines(lines, 0);
 }
 
-function parseLines(lines: string[]): Block[] {
+function parseLines(lines: string[], depth = 0): Block[] {
   const blocks: Block[] = [];
-  let i = 0;
 
+  if (depth > MAX_NESTING_DEPTH) {
+    // Too deep to safely recurse further — preserve everything from here on
+    // verbatim as 'raw' blocks instead of risking a stack overflow.
+    for (const raw of lines) {
+      const t = raw.trim();
+      if (!t || t.startsWith('//') || t === '}' || t === '};') continue;
+      blocks.push(makeBlock('stack', 'raw', 'raw', t, '#888888'));
+    }
+    return blocks;
+  }
+
+  let i = 0;
   while (i < lines.length) {
     const raw = lines[i];
     const t = raw.trim();
 
     if (!t || t.startsWith('//') || t === '}' || t === '};') { i++; continue; }
 
-    const result = parseOneLine(lines, i);
+    const result = parseOneLine(lines, i, depth);
     if (result) {
       blocks.push(result.block);
       i += result.consumed;
     } else {
+      // Unrecognized statement (bare assignment, function call, break/continue,
+      // case/default label, etc.) — preserve the original source verbatim
+      // instead of silently deleting it.
+      blocks.push(makeBlock('stack', 'raw', 'raw', t, '#888888'));
       i++;
     }
   }
   return blocks;
 }
 
-function parseOneLine(lines: string[], i: number): { block: Block; consumed: number } | null {
+function parseOneLine(lines: string[], i: number, depth = 0): { block: Block; consumed: number } | null {
   const t = lines[i].trim();
 
   // ── Class (clase / class / Python class) ───────────────────────────────
@@ -132,7 +149,7 @@ function parseOneLine(lines: string[], i: number): { block: Block; consumed: num
       ? extractBraceBlock(lines, i)
       : extractPythonBlock(lines, i, countIndent(lines[i]));
     return {
-      block: makeBlock('hat', 'clase', 'clase', name, '#9966ff', parseLines(inner)),
+      block: makeBlock('hat', 'clase', 'clase', name, '#9966ff', parseLines(inner, depth + 1)),
       consumed,
     };
   }
@@ -143,7 +160,7 @@ function parseOneLine(lines: string[], i: number): { block: Block; consumed: num
     const name = nameMatch?.[1] ?? 'NombreClase';
     const { inner, consumed } = extractPythonBlock(lines, i, countIndent(lines[i]));
     return {
-      block: makeBlock('hat', 'clase', 'clase', name, '#9966ff', parseLines(inner)),
+      block: makeBlock('hat', 'clase', 'clase', name, '#9966ff', parseLines(inner, depth + 1)),
       consumed,
     };
   }
@@ -153,7 +170,7 @@ function parseOneLine(lines: string[], i: number): { block: Block; consumed: num
     const { inner, consumed } = extractPythonBlock(lines, i, countIndent(lines[i]));
     const sig = t.replace(/:\s*$/, '').trim();
     return {
-      block: makeBlock('hat', 'metodo', 'método', sig, '#9966ff', parseLines(inner)),
+      block: makeBlock('hat', 'metodo', 'método', sig, '#9966ff', parseLines(inner, depth + 1)),
       consumed,
     };
   }
@@ -165,7 +182,7 @@ function parseOneLine(lines: string[], i: number): { block: Block; consumed: num
       ? extractBraceBlock(lines, i)
       : extractPythonBlock(lines, i, countIndent(lines[i]));
     return {
-      block: makeBlock('hat', 'main', 'main()', '', '#ff8c1a', parseLines(inner)),
+      block: makeBlock('hat', 'main', 'main()', '', '#ff8c1a', parseLines(inner, depth + 1)),
       consumed,
     };
   }
@@ -178,7 +195,7 @@ function parseOneLine(lines: string[], i: number): { block: Block; consumed: num
       : extractPythonBlock(lines, i, countIndent(lines[i]));
     const sig = hasBraces ? t.replace(/\{.*/, '').trim() : t.replace(/:\s*$/, '').trim();
     return {
-      block: makeBlock('hat', 'metodo', 'método', sig, '#9966ff', parseLines(inner)),
+      block: makeBlock('hat', 'metodo', 'método', sig, '#9966ff', parseLines(inner, depth + 1)),
       consumed,
     };
   }
@@ -193,13 +210,13 @@ function parseOneLine(lines: string[], i: number): { block: Block; consumed: num
       if (compound) {
         return {
           block: makeBlock('c-if', 'si', compound.hasSino ? 'si / sino' : 'si', params, '#ffab19',
-            parseLines(compound.ifBody), compound.hasSino ? parseLines(compound.elseBody) : []),
+            parseLines(compound.ifBody, depth + 1), compound.hasSino ? parseLines(compound.elseBody, depth + 1) : []),
           consumed: compound.consumed,
         };
       }
       const { inner, consumed } = extractBraceBlock(lines, i);
       return {
-        block: makeBlock('c-if', 'si', 'si', params, '#ffab19', parseLines(inner), []),
+        block: makeBlock('c-if', 'si', 'si', params, '#ffab19', parseLines(inner, depth + 1), []),
         consumed,
       };
     } else {
@@ -214,20 +231,20 @@ function parseOneLine(lines: string[], i: number): { block: Block; consumed: num
         const nextTrim = lines[nextIdx].trim();
         if (/^(?:sino_si|elif)\s/.test(nextTrim)) {
           // Treat as else-if: parse as nested if
-          const elifResult = parseOneLine(lines, nextIdx);
+          const elifResult = parseOneLine(lines, nextIdx, depth + 1);
           if (elifResult) {
             elseChildren = [elifResult.block];
             totalConsumed += elifResult.consumed;
           }
         } else if (nextTrim === 'sino:' || nextTrim === 'else:') {
           const { inner: elseInner, consumed: elseConsumed } = extractPythonBlock(lines, nextIdx, baseIndent);
-          elseChildren = parseLines(elseInner);
+          elseChildren = parseLines(elseInner, depth + 1);
           totalConsumed += elseConsumed;
         }
       }
       return {
         block: makeBlock('c-if', 'si', 'si', params, '#ffab19',
-          parseLines(ifInner), elseChildren),
+          parseLines(ifInner, depth + 1), elseChildren),
         consumed: totalConsumed,
       };
     }
@@ -241,7 +258,7 @@ function parseOneLine(lines: string[], i: number): { block: Block; consumed: num
       ? extractBraceBlock(lines, i)
       : extractPythonBlock(lines, i, countIndent(lines[i]));
     return {
-      block: makeBlock('c-loop', 'para', 'para', params, '#ffab19', parseLines(inner)),
+      block: makeBlock('c-loop', 'para', 'para', params, '#ffab19', parseLines(inner, depth + 1)),
       consumed,
     };
   }
@@ -254,7 +271,7 @@ function parseOneLine(lines: string[], i: number): { block: Block; consumed: num
       ? extractBraceBlock(lines, i)
       : extractPythonBlock(lines, i, countIndent(lines[i]));
     return {
-      block: makeBlock('c-loop', 'mientras', 'mientras', params, '#ffab19', parseLines(inner)),
+      block: makeBlock('c-loop', 'mientras', 'mientras', params, '#ffab19', parseLines(inner, depth + 1)),
       consumed,
     };
   }
@@ -266,7 +283,7 @@ function parseOneLine(lines: string[], i: number): { block: Block; consumed: num
     const m = lastLine.match(/(?:mientras|while)\s*\((.+?)\)\s*;?\s*$/);
     const cond = m ? m[1].trim() : 'condición';
     return {
-      block: makeBlock('c-loop', 'hacer', 'hacer / mientras', cond, '#ffab19', parseLines(inner)),
+      block: makeBlock('c-loop', 'hacer', 'hacer / mientras', cond, '#ffab19', parseLines(inner, depth + 1)),
       consumed,
     };
   }
@@ -276,7 +293,7 @@ function parseOneLine(lines: string[], i: number): { block: Block; consumed: num
     const params = extractParens(t);
     const { inner, consumed } = extractBraceBlock(lines, i);
     return {
-      block: makeBlock('c-loop', 'cambiar', 'cambiar', params, '#ffab19', parseLines(inner)),
+      block: makeBlock('c-loop', 'cambiar', 'cambiar', params, '#ffab19', parseLines(inner, depth + 1)),
       consumed,
     };
   }
@@ -287,7 +304,7 @@ function parseOneLine(lines: string[], i: number): { block: Block; consumed: num
     if (tryResult) {
       return {
         block: makeBlock('c-try', 'intentar', 'intentar/capturar', tryResult.catchParam, '#ff6680',
-          parseLines(tryResult.tryBody), parseLines(tryResult.catchBody)),
+          parseLines(tryResult.tryBody, depth + 1), parseLines(tryResult.catchBody, depth + 1)),
         consumed: tryResult.consumed,
       };
     }
@@ -318,7 +335,7 @@ function parseOneLine(lines: string[], i: number): { block: Block; consumed: num
     }
     return {
       block: makeBlock('c-try', 'intentar', 'intentar/capturar', catchParam, '#ff6680',
-        parseLines(tryInner), parseLines(catchBody)),
+        parseLines(tryInner, depth + 1), parseLines(catchBody, depth + 1)),
       consumed: totalConsumed,
     };
   }
@@ -357,6 +374,16 @@ function parseOneLine(lines: string[], i: number): { block: Block; consumed: num
     return { block: makeBlock('stack', 'lanzar', 'lanzar', val, '#ff6680'), consumed: 1 };
   }
 
+  // ── break / romper ──────────────────────────────────────────────────
+  if (KW_BREAK.test(t)) {
+    return { block: makeBlock('stack', 'raw', 'romper', 'romper;', '#888888'), consumed: 1 };
+  }
+
+  // ── continue / continuar ────────────────────────────────────────────
+  if (KW_CONTINUE.test(t)) {
+    return { block: makeBlock('stack', 'raw', 'continuar', 'continuar;', '#888888'), consumed: 1 };
+  }
+
   // ── variable declaration ───────────────────────────────────────────────
   const varTypes: Array<{ es: string; en: string[] }> = [
     { es: 'entero',    en: ['int', 'Int'] },
@@ -385,6 +412,15 @@ function parseOneLine(lines: string[], i: number): { block: Block; consumed: num
 
 // ── si/sino compound extractor ────────────────────────────────────────────
 
+/** Split same-line inline statement text on ';' into separate parseable "lines". */
+function splitInlineStatements(text: string): string[] {
+  return text
+    .split(';')
+    .map(s => s.trim())
+    .filter(Boolean)
+    .map(s => `${s};`);
+}
+
 function extractSiSino(lines: string[], startIdx: number): {
   ifBody: string[];
   elseBody: string[];
@@ -397,7 +433,6 @@ function extractSiSino(lines: string[], startIdx: number): {
   // Collect the if body
   let depth = 0;
   const allLines: string[] = [];
-  let ifEnd = -1;
 
   for (let i = startIdx; i < lines.length; i++) {
     const line = lines[i];
@@ -407,18 +442,7 @@ function extractSiSino(lines: string[], startIdx: number): {
       if (ch === '}') depth--;
     }
     if (depth === 0 && allLines.length > 1) {
-      ifEnd = allLines.length - 1;
       break;
-    }
-  }
-
-  // Check if the last line is "} sino {" or "} else {" or if the next line has it
-  const lastLine = allLines[allLines.length - 1]?.trim() ?? '';
-  if ((lastLine.includes('sino') || lastLine.includes('else')) && lastLine.includes('{')) {
-    const closingBraceIdx = allLines.findIndex((l, idx) => idx > 0 && l.trim().match(/^}\s*(?:sino|else)\s*\{/));
-    if (closingBraceIdx !== -1) {
-      const ifBody = allLines.slice(1, closingBraceIdx);
-      const remaining = lines.slice(startIdx + allLines.length - (allLines.length - closingBraceIdx - 1));
     }
   }
 
@@ -441,6 +465,10 @@ function extractSiSino(lines: string[], startIdx: number): {
       sinoIdx = processedLines.length - 1;
     }
 
+    // A fully single-line block (braces open & close on the first physical line)
+    // must stop here without consuming any further lines — mirrors extractBraceBlock's
+    // `all.length === 1 && depth === 0` special case.
+    if (processedLines.length === 1 && elseDepth === 0) break;
     if (elseDepth === 0 && processedLines.length > 1) break;
   }
 
@@ -450,6 +478,16 @@ function extractSiSino(lines: string[], startIdx: number): {
     const ifBody = processedLines.slice(1, sinoIdx);
     const elseBody = processedLines.slice(sinoIdx + 1, processedLines.length - 1);
     return { ifBody, elseBody, hasSino: true, consumed };
+  }
+
+  if (processedLines.length === 1) {
+    // The entire "si (...) { ... }" lives on one physical line — pull the body
+    // out from between the first '{' and the last '}' instead of slicing lines.
+    const only = processedLines[0];
+    const openIdx = only.indexOf('{');
+    const closeIdx = only.lastIndexOf('}');
+    const inline = openIdx !== -1 && closeIdx > openIdx ? only.slice(openIdx + 1, closeIdx).trim() : '';
+    return { ifBody: inline ? splitInlineStatements(inline) : [], elseBody: [], hasSino: false, consumed };
   }
 
   const ifBody = processedLines.slice(1, processedLines.length - 1);
@@ -485,10 +523,24 @@ function extractTryCatch(lines: string[], startIdx: number): {
       catchStart = collected.length - 1;
     }
 
+    // A fully single-line "intentar { ... }" must stop here without consuming
+    // any further lines — mirrors extractBraceBlock's `all.length === 1 && depth === 0`.
+    if (collected.length === 1 && depth === 0) break;
     if (depth === 0 && collected.length > 1) break;
   }
 
   if (!collected.length) return null;
+
+  if (collected.length === 1 && catchStart === -1) {
+    // The entire "intentar { ... }" lives on one physical line with no catch
+    // clause on that same line — pull the body out from between the first
+    // '{' and the last '}' instead of slicing lines.
+    const only = collected[0];
+    const openIdx = only.indexOf('{');
+    const closeIdx = only.lastIndexOf('}');
+    const inline = openIdx !== -1 && closeIdx > openIdx ? only.slice(openIdx + 1, closeIdx).trim() : '';
+    return { tryBody: inline ? splitInlineStatements(inline) : [], catchBody: [], catchParam, consumed: collected.length };
+  }
 
   const tryBody = catchStart !== -1 ? collected.slice(1, catchStart) : collected.slice(1, -1);
   const catchBody = catchStart !== -1 ? collected.slice(catchStart + 1, -1) : [];

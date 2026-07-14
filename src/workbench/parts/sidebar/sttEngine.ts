@@ -1,6 +1,6 @@
 import { Emitter } from '../../../base/common/event.js';
 
-export type STTStatus = 'idle' | 'downloading' | 'loading' | 'ready' | 'recording' | 'error';
+export type STTStatus = 'idle' | 'downloading' | 'loading' | 'ready' | 'starting' | 'recording' | 'error';
 
 export class STTEngine {
   private _status: STTStatus = 'idle';
@@ -52,7 +52,7 @@ export class STTEngine {
   }
 
   private async _downloadAndCache(id: string, url: string): Promise<void> {
-    const api = (window as any).electronAPI;
+    const api = window.electronAPI;
     if (api?.modelOps?.download) {
       const unsub = api.modelOps.onProgress?.((pct: number) => this._onProgress.fire(pct));
       try {
@@ -72,6 +72,12 @@ export class STTEngine {
 
   async startRecording(): Promise<void> {
     if (this._status !== 'ready' || !this._model) return;
+
+    // Mark re-entrancy synchronously, before the first await, so a rapid double-click (or
+    // the delay of the OS mic-permission prompt) can't slip a second concurrent call past
+    // the guard above — mirrors RunEngine.run() setting _isRunning = true before its first
+    // await. The status change also disables the record button reactively (see STTPanel).
+    this._setStatus('starting');
 
     try {
       this._stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
@@ -104,6 +110,14 @@ export class STTEngine {
       this._setStatus('recording');
     } catch (err: any) {
       console.error('[STT] Recording error:', err);
+      // Release any mic stream / AudioContext already acquired before the failure (e.g.
+      // getUserMedia succeeded but recognizer construction then threw). Otherwise a later
+      // retry reassigns these fields and the previous live stream/context — still holding
+      // the microphone / audio-hardware resources open — is orphaned forever.
+      try { this._stream?.getTracks().forEach(t => t.stop()); } catch { /* cleanup best-effort */ }
+      this._stream = null;
+      try { void this._audioCtx?.close(); } catch { /* cleanup best-effort */ }
+      this._audioCtx = null;
       const isPermission = err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError';
       this._onStatus.fire(isPermission ? 'error' : 'error');
       this._setStatus('error');
@@ -136,7 +150,7 @@ export class STTEngine {
   }
 
   private async _loadCached(id: string): Promise<ArrayBuffer | null> {
-    const api = (window as any).electronAPI;
+    const api = window.electronAPI;
     if (!api?.modelOps) return null;
     try {
       const res = await api.modelOps.load(id);
@@ -149,7 +163,7 @@ export class STTEngine {
   }
 
   private async _saveCache(id: string, buffer: ArrayBuffer): Promise<void> {
-    const api = (window as any).electronAPI;
+    const api = window.electronAPI;
     if (!api?.modelOps) return;
     try { await api.modelOps.save(id, buffer); } catch { /* ignore */ }
   }

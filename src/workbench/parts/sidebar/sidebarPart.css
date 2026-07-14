@@ -12,10 +12,11 @@
   display: flex;
   align-items: center;
   padding: 0 16px;
-  font-size: 11px;
+  font-family: var(--monaco-monospace-font);
+  font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.8px;
   color: var(--vscode-sideBarTitle-foreground);
   border-bottom: 1px solid var(--vscode-sideBar-border);
   flex-shrink: 0;
@@ -37,10 +38,11 @@
   display: flex;
   align-items: center;
   padding: 0 12px;
-  font-size: 11px;
+  font-family: var(--monaco-monospace-font);
+  font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.8px;
   color: var(--vscode-sideBarSectionHeader-foreground);
   background-color: var(--vscode-sideBarSectionHeader-background);
   cursor: pointer;
@@ -55,7 +57,9 @@
   display: flex;
   align-items: center;
   height: 22px;
-  padding: 0 12px 0 22px;
+  padding: 0 12px 0 18px;
+  margin: 0 4px;
+  border-radius: 4px;
   font-size: 13px;
   cursor: pointer;
   white-space: nowrap;
@@ -121,6 +125,8 @@
   text-overflow: ellipsis;
   font-size: 13px;
   padding-right: 8px;
+  margin: 0 4px;
+  border-radius: 4px;
 }
 
 .sidebar-file-row:hover {
@@ -129,7 +135,7 @@
 
 .sidebar-file-row.active {
   background-color: var(--vscode-list-activeSelectionBackground);
-  color: var(--vscode-list-activeSelectionForeground);
+  color: var(--hydra-accent);
 }
 
 .sidebar-file-icon {
@@ -183,10 +189,11 @@
 
 .blocks-category-header {
   padding: 8px 12px 4px 14px;
+  font-family: var(--monaco-monospace-font);
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.8px;
   color: var(--vscode-sideBarTitle-foreground, #bbb);
   border-left: 3px solid transparent;
   margin-top: 4px;
@@ -228,10 +235,11 @@
 /* ── STT Panel ── */
 .stt-header {
   padding: 8px 12px 6px;
+  font-family: var(--monaco-monospace-font);
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.8px;
   color: var(--vscode-sideBarSectionHeader-foreground);
   background: var(--vscode-sideBarSectionHeader-background);
   border-bottom: 1px solid var(--vscode-sideBar-border);
@@ -285,7 +293,7 @@
 .stt-progress-bar {
   height: 100%;
   width: 0;
-  background: #4fc3f7;
+  background: var(--hydra-accent);
   border-radius: 2px;
   transition: width 0.3s;
 }
@@ -309,13 +317,14 @@
 .stt-record-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .stt-record-btn.stt-record-active {
-  background: #c62828;
+  background: var(--hydra-danger);
+  color: #10141c;
   animation: stt-pulse 1.4s ease-in-out infinite;
 }
 
 @keyframes stt-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(198,40,40,0.5); }
-  50%       { box-shadow: 0 0 0 6px rgba(198,40,40,0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(242, 109, 109, 0.5); }
+  50%       { box-shadow: 0 0 0 6px rgba(242, 109, 109, 0); }
 }
 
 .stt-textarea {
@@ -337,82 +346,144 @@
 
 .stt-textarea:focus { border-color: var(--vscode-focusBorder, #007fd4); }
 
-/* ── Run & Debug panel ── */
+/* ── Run & Debug panel ──────────────────────────────────────────────────────
+   Modeled on VS Code's "Run and Debug" view: a single prominent primary
+   action, a de-emphasized secondary option below it (mirroring VS Code's
+   "Show all automatic debug configurations" link treatment), and — while a
+   run is active — the whole idle view is replaced by a compact toolbar
+   (spinner + status + Stop), the same way VS Code's view morphs into its
+   debug toolbar during a session. */
 .run-panel-body {
-  padding: 12px;
+  padding: 16px 12px;
+}
+
+.run-idle-view {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-}
-
-.run-lang-info {
-  font-size: 12px;
-  padding: 6px 10px;
-  border-radius: 4px;
-  border-left: 3px solid;
-}
-
-.run-lang-ok   { color: #89d185; border-color: #89d185; background: rgba(137,209,133,0.08); }
-.run-lang-warn { color: #cca700; border-color: #cca700; background: rgba(204,167,0,0.08); }
-
-.run-actions {
-  display: flex;
+  align-items: center;
+  text-align: center;
   gap: 8px;
 }
 
-.run-btn {
-  flex: 1;
-  padding: 7px 12px;
+.run-primary-btn {
+  width: 100%;
+  padding: 10px 16px;
   border: none;
   border-radius: 4px;
+  background: var(--hydra-accent);
+  color: #10141c;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: filter 0.1s;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 8px;
+  transition: filter 0.1s;
+}
+
+.run-primary-btn:hover { filter: brightness(1.12); }
+.run-primary-btn svg { flex-shrink: 0; }
+
+.run-lang-badge {
+  font-family: var(--monaco-monospace-font);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--hydra-accent-soft);
+  color: var(--hydra-accent);
+}
+
+.run-lang-badge.run-lang-badge-warn {
+  background: rgba(229, 193, 92, 0.12);
+  color: var(--hydra-warn);
+}
+
+.run-secondary-row {
+  margin-top: 4px;
+}
+
+.run-secondary-link {
+  background: none;
+  border: none;
+  padding: 2px 0;
+  font-size: 11.5px;
+  color: var(--vscode-textLink-foreground, #4fc3f7);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
   gap: 6px;
 }
 
-.run-btn svg {
-  flex-shrink: 0;
-}
-
-.run-btn:hover:not(:disabled) { filter: brightness(1.15); }
-.run-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-
-.run-btn-run {
-  background: linear-gradient(135deg, #23d18b, #1a9e6b);
-  color: #fff;
-}
-
-.run-btn-debug {
-  background: linear-gradient(135deg, #4fc3f7, #0288d1);
-  color: #fff;
-}
-
-.run-btn-stop {
-  background: rgba(244,71,71,0.2);
-  color: #f44747;
-  border: 1px solid rgba(244,71,71,0.4);
-}
-
-.run-status {
-  font-size: 12px;
-  color: var(--vscode-descriptionForeground, #888);
-}
-
-.run-status-running {
-  color: #23d18b;
-}
+.run-secondary-link:hover { text-decoration: underline; }
+.run-secondary-link svg { flex-shrink: 0; opacity: 0.9; }
 
 .run-hint {
+  margin-top: 10px;
   font-size: 11px;
   color: var(--vscode-descriptionForeground, #666);
   font-style: italic;
   line-height: 1.5;
 }
+
+.run-running-view {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 2px;
+}
+
+.run-spinner {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid rgba(148, 163, 190, 0.25);
+  border-top-color: var(--hydra-accent);
+  animation: run-spin 0.8s linear infinite;
+}
+
+@keyframes run-spin {
+  to { transform: rotate(360deg); }
+}
+
+.run-running-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.run-running-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--hydra-accent);
+}
+
+.run-running-lang {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #888);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-stop-btn {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+  border: 1px solid rgba(242, 109, 109, 0.4);
+  background: rgba(242, 109, 109, 0.14);
+  color: var(--hydra-danger);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: filter 0.1s;
+}
+
+.run-stop-btn:hover { filter: brightness(1.2); }
 
 /* ── Extensions panel ── */
 .ext-search-wrap {
@@ -425,10 +496,11 @@
 
 .ext-section-title {
   padding: 6px 12px 4px;
+  font-family: var(--monaco-monospace-font);
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.8px;
   color: var(--vscode-sideBarTitle-foreground, #bbb);
 }
 
@@ -534,10 +606,11 @@
 
 .ext-section-subtitle {
   padding: 8px 12px 4px;
+  font-family: var(--monaco-monospace-font);
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.8px;
   color: var(--vscode-sideBarTitle-foreground, #bbb);
   border-top: 1px solid var(--vscode-sideBar-border);
   margin-top: 4px;
@@ -568,10 +641,11 @@
 }
 
 .ext-example-lang {
+  font-family: var(--monaco-monospace-font);
   font-size: 10px;
   padding: 2px 6px;
-  background: rgba(79,195,247,0.15);
-  color: #4fc3f7;
+  background: var(--hydra-accent-soft);
+  color: var(--hydra-accent);
   border-radius: 3px;
 }
 
@@ -639,7 +713,7 @@
   justify-content: center;
   font-size: 26px;
   font-weight: 700;
-  color: #4fc3f7;
+  color: var(--hydra-accent);
   overflow: hidden;
 }
 
@@ -739,8 +813,8 @@
 .stt-btn:hover { filter: brightness(1.15); }
 
 .stt-btn-insert {
-  background: var(--vscode-button-background, #0e639c);
-  color: #fff;
+  background: var(--vscode-button-background, #3ecfae);
+  color: var(--vscode-button-foreground, #10141c);
 }
 
 .stt-btn-clear {

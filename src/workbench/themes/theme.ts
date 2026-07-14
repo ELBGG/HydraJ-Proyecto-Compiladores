@@ -3,122 +3,129 @@ export interface ColorTheme {
   colors: Record<string, string>;
 }
 
+/**
+ * HydraCode Dark — "tinta y cinco cabezas".
+ * Deep blue-cast ink chrome; the only saturated color in the workbench is the
+ * active-language accent (--hydra-accent), defined in style.css and switched
+ * via the data-hydra-lang attribute on <html>.
+ */
 export const vsCodeDark: ColorTheme = {
   name: 'HydraCode Dark',
   colors: {
-    '--vscode-foreground': '#cccccc',
-    '--vscode-disabledForeground': '#c5c5c5',
-    '--vscode-errorForeground': '#f48771',
-    '--vscode-descriptionForeground': '#bcbcbc',
-    '--vscode-icon-foreground': '#c5c5c5',
-    '--vscode-focusBorder': '#007fd4',
-    '--vscode-selection-background': '#264f78',
-    '--vscode-textLink-foreground': '#3794ff',
-    '--vscode-textLink-activeForeground': '#3794ff',
-    '--vscode-textPreformat-foreground': '#d7ba7d',
-    '--vscode-textBlockQuote-background': '#2b2b2b',
-    '--vscode-textBlockQuote-border': '#616161',
-    '--vscode-sash-hoverBorder': '#007fd4',
-    '--vscode-window-border': '#464648',
+    '--vscode-foreground': '#ccd4e2',
+    '--vscode-disabledForeground': '#5b6373',
+    '--vscode-errorForeground': '#f26d6d',
+    '--vscode-descriptionForeground': '#8a93a6',
+    '--vscode-icon-foreground': '#a9b2c4',
+    '--vscode-focusBorder': 'var(--hydra-accent)',
+    '--vscode-selection-background': '#2b4165',
+    '--vscode-textLink-foreground': 'var(--hydra-accent)',
+    '--vscode-textLink-activeForeground': 'var(--hydra-accent)',
+    '--vscode-textPreformat-foreground': '#e5c15c',
+    '--vscode-textBlockQuote-background': '#161b24',
+    '--vscode-textBlockQuote-border': '#232a38',
+    '--vscode-sash-hoverBorder': 'var(--hydra-accent)',
+    '--vscode-window-border': '#232a38',
 
     /* Workbench */
-    '--vscode-workbench-background': '#1e1e1e',
-    '--vscode-editor-background': '#1e1e1e',
-    '--vscode-editor-foreground': '#d4d4d4',
-    '--vscode-editorWidget-background': '#252526',
-    '--vscode-editorWidget-border': '#454545',
-    '--vscode-editorWidget-foreground': '#cccccc',
+    '--vscode-workbench-background': '#12161f',
+    '--vscode-editor-background': '#171c26',
+    '--vscode-editor-foreground': '#d2d9e6',
+    '--vscode-editorWidget-background': '#1a2029',
+    '--vscode-editorWidget-border': '#232a38',
+    '--vscode-editorWidget-foreground': '#ccd4e2',
 
     /* Activity Bar */
-    '--vscode-activityBar-background': '#333333',
-    '--vscode-activityBar-foreground': '#ffffff',
-    '--vscode-activityBar-inactiveForeground': '#8c8c8c',
-    '--vscode-activityBar-activeBorder': '#ffffff',
-    '--vscode-activityBar-activeBackground': '#3c3c3c',
-    '--vscode-activityBar-border': '#252526',
+    '--vscode-activityBar-background': '#0e1218',
+    '--vscode-activityBar-foreground': '#dbe2ee',
+    '--vscode-activityBar-inactiveForeground': '#5b6373',
+    '--vscode-activityBar-activeBorder': 'var(--hydra-accent)',
+    '--vscode-activityBar-activeBackground': 'var(--hydra-accent-soft)',
+    '--vscode-activityBar-border': '#1b202b',
 
     /* Side Bar */
-    '--vscode-sideBar-background': '#252526',
-    '--vscode-sideBar-foreground': '#cccccc',
-    '--vscode-sideBar-border': '#1e1e1e',
-    '--vscode-sideBarTitle-foreground': '#bbbbbb',
-    '--vscode-sideBarSectionHeader-background': '#2b2b2b',
-    '--vscode-sideBarSectionHeader-foreground': '#cccccc',
+    '--vscode-sideBar-background': '#141822',
+    '--vscode-sideBar-foreground': '#b7c0d1',
+    '--vscode-sideBar-border': '#1b202b',
+    '--vscode-sideBarTitle-foreground': '#8a93a6',
+    '--vscode-sideBarSectionHeader-background': '#171c26',
+    '--vscode-sideBarSectionHeader-foreground': '#8a93a6',
 
     /* Panel (bottom) */
-    '--vscode-panel-background': '#1e1e1e',
-    '--vscode-panel-foreground': '#cccccc',
-    '--vscode-panel-border': '#252526',
-    '--vscode-panelTitle-activeForeground': '#e7e7e7',
-    '--vscode-panelTitle-inactiveForeground': '#8c8c8c',
-    '--vscode-panelTitle-activeBorder': '#e7e7e7',
-    '--vscode-panelInput-border': '#2b2b2b',
+    '--vscode-panel-background': '#141822',
+    '--vscode-panel-foreground': '#b7c0d1',
+    '--vscode-panel-border': '#1b202b',
+    '--vscode-panelTitle-activeForeground': '#dbe2ee',
+    '--vscode-panelTitle-inactiveForeground': '#5b6373',
+    '--vscode-panelTitle-activeBorder': 'var(--hydra-accent)',
+    '--vscode-panelInput-border': '#232a38',
 
-    /* Status Bar */
-    '--vscode-statusBar-background': '#007acc',
-    '--vscode-statusBar-foreground': '#ffffff',
-    '--vscode-statusBar-border': '#252526',
-    '--vscode-statusBar-noFolderBackground': '#007acc',
-    '--vscode-statusBarItem-hoverBackground': '#0088e0',
-    '--vscode-statusBarItem-activeBackground': '#0099f0',
+    /* Status Bar — quiet ink; the language chip carries the accent */
+    '--vscode-statusBar-background': '#0e1218',
+    '--vscode-statusBar-foreground': '#8a93a6',
+    '--vscode-statusBar-border': '#1b202b',
+    '--vscode-statusBar-noFolderBackground': '#0e1218',
+    '--vscode-statusBarItem-hoverBackground': 'rgba(148, 163, 190, 0.10)',
+    '--vscode-statusBarItem-activeBackground': 'rgba(148, 163, 190, 0.16)',
 
     /* Title Bar */
-    '--vscode-titleBar-activeBackground': '#3c3c3c',
-    '--vscode-titleBar-activeForeground': '#cccccc',
-    '--vscode-titleBar-inactiveBackground': '#2d2d2d',
-    '--vscode-titleBar-inactiveForeground': '#8c8c8c',
-    '--vscode-titleBar-border': '#252526',
+    '--vscode-titleBar-activeBackground': '#0e1218',
+    '--vscode-titleBar-activeForeground': '#b7c0d1',
+    '--vscode-titleBar-inactiveBackground': '#0e1218',
+    '--vscode-titleBar-inactiveForeground': '#5b6373',
+    '--vscode-titleBar-border': '#1b202b',
 
     /* Editor Tabs */
-    '--vscode-tab-activeBackground': '#1e1e1e',
-    '--vscode-tab-activeForeground': '#ffffff',
-    '--vscode-tab-inactiveBackground': '#2d2d2d',
-    '--vscode-tab-inactiveForeground': '#8c8c8c',
-    '--vscode-tab-border': '#252526',
-    '--vscode-tab-activeBorderTop': '#007acc',
-    '--vscode-tab-hoverBackground': '#2d2d2d',
+    '--vscode-tab-activeBackground': '#171c26',
+    '--vscode-tab-activeForeground': '#e6ebf4',
+    '--vscode-tab-inactiveBackground': '#12161f',
+    '--vscode-tab-inactiveForeground': '#767f92',
+    '--vscode-tab-border': '#1b202b',
+    '--vscode-tab-activeBorderTop': 'var(--hydra-accent)',
+    '--vscode-tab-hoverBackground': '#161b24',
 
     /* Input */
-    '--vscode-input-background': '#3c3c3c',
-    '--vscode-input-foreground': '#cccccc',
-    '--vscode-input-border': '#454545',
-    '--vscode-input-placeholderForeground': '#8c8c8c',
+    '--vscode-input-background': '#0e1218',
+    '--vscode-input-foreground': '#ccd4e2',
+    '--vscode-input-border': '#232a38',
+    '--vscode-input-placeholderForeground': '#5b6373',
 
     /* List/Tree */
-    '--vscode-list-activeSelectionBackground': '#094771',
-    '--vscode-list-activeSelectionForeground': '#ffffff',
-    '--vscode-list-inactiveSelectionBackground': '#37373d',
-    '--vscode-list-inactiveSelectionForeground': '#cccccc',
-    '--vscode-list-hoverBackground': '#2a2d2e',
-    '--vscode-list-hoverForeground': '#cccccc',
-    '--vscode-list-focusBackground': '#094771',
-    '--vscode-list-focusForeground': '#ffffff',
+    '--vscode-list-activeSelectionBackground': 'var(--hydra-accent-soft)',
+    '--vscode-list-activeSelectionForeground': '#e6ebf4',
+    '--vscode-list-inactiveSelectionBackground': 'rgba(148, 163, 190, 0.08)',
+    '--vscode-list-inactiveSelectionForeground': '#ccd4e2',
+    '--vscode-list-hoverBackground': 'rgba(148, 163, 190, 0.07)',
+    '--vscode-list-hoverForeground': '#dbe2ee',
+    '--vscode-list-focusBackground': 'var(--hydra-accent-soft)',
+    '--vscode-list-focusForeground': '#e6ebf4',
 
     /* Scrollbar */
-    '--vscode-scrollbarSlider-background': '#7979794d',
-    '--vscode-scrollbarSlider-hoverBackground': '#6464648a',
-    '--vscode-scrollbarSlider-activeBackground': '#bfbfbf8a',
+    '--vscode-scrollbarSlider-background': 'rgba(122, 134, 156, 0.25)',
+    '--vscode-scrollbarSlider-hoverBackground': 'rgba(122, 134, 156, 0.40)',
+    '--vscode-scrollbarSlider-activeBackground': 'rgba(122, 134, 156, 0.55)',
 
     /* Badge */
-    '--vscode-badge-background': '#4d4d4d',
-    '--vscode-badge-foreground': '#ffffff',
+    '--vscode-badge-background': 'var(--hydra-accent)',
+    '--vscode-badge-foreground': '#0e1218',
 
     /* Button */
-    '--vscode-button-background': '#0e639c',
-    '--vscode-button-foreground': '#ffffff',
-    '--vscode-button-hoverBackground': '#1177bb',
+    '--vscode-button-background': 'var(--hydra-accent)',
+    '--vscode-button-foreground': '#10141c',
+    '--vscode-button-hoverBackground': 'color-mix(in srgb, var(--hydra-accent) 85%, white)',
 
     /* Menu */
-    '--vscode-menu-background': '#2b2b2b',
-    '--vscode-menu-foreground': '#cccccc',
-    '--vscode-menu-border': '#454545',
-    '--vscode-menu-selectionBackground': '#094771',
-    '--vscode-menu-selectionForeground': '#ffffff',
+    '--vscode-menu-background': '#1a2029',
+    '--vscode-menu-foreground': '#ccd4e2',
+    '--vscode-menu-border': '#232a38',
+    '--vscode-menu-separatorBackground': '#232a38',
+    '--vscode-menu-selectionBackground': 'var(--hydra-accent-soft)',
+    '--vscode-menu-selectionForeground': '#e6ebf4',
 
     /* Notifications */
-    '--vscode-notification-background': '#252526',
-    '--vscode-notification-foreground': '#cccccc',
-    '--vscode-notification-border': '#454545',
+    '--vscode-notification-background': '#1a2029',
+    '--vscode-notification-foreground': '#ccd4e2',
+    '--vscode-notification-border': '#232a38',
   },
 };
 

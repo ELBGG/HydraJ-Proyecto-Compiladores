@@ -33,6 +33,7 @@ export const cSpanish = new HumanLanguageMapping(
       'enum': 'enum',
       'tamano_de': 'sizeof',
       'auto': 'auto',
+      'principal': 'main',
     },
     types: {
       'entero': 'int',

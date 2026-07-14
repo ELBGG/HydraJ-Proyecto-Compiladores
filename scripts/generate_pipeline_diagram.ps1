@@ -37,23 +37,22 @@ $arrowPen.EndCap = [System.Drawing.Drawing2D.LineCap]::ArrowAnchor
 $g.DrawString("HydraCode - Pipeline de Transpilacion y Ejecucion", $titleFont, $titleBrush, 40, 25)
 $g.DrawString("Codigo fuente en espanol -> AST -> lenguaje destino -> editor dual -> ejecucion", $subFont, $subBrush, 40, 68)
 
-function Draw-Box($x, $y, $w, $h, $title, $sub, $alt) {
-    $rect = New-Object System.Drawing.Rectangle($x, $y, $w, $h)
-    $path = New-Object System.Drawing.Drawing2D.GraphicsPath
+function Draw-Box([int]$x, [int]$y, [int]$w, [int]$h, [string]$title, [string]$sub, [bool]$alt) {
+    $path = [System.Drawing.Drawing2D.GraphicsPath]::new()
     $radius = 14
     $path.AddArc($x, $y, $radius, $radius, 180, 90)
-    $path.AddArc($x + $w - $radius, $y, $radius, $radius, 270, 90)
-    $path.AddArc($x + $w - $radius, $y + $h - $radius, $radius, $radius, 0, 90)
-    $path.AddArc($x, $y + $h - $radius, $radius, $radius, 90, 90)
+    $path.AddArc(($x + $w - $radius), $y, $radius, $radius, 270, 90)
+    $path.AddArc(($x + $w - $radius), ($y + $h - $radius), $radius, $radius, 0, 90)
+    $path.AddArc($x, ($y + $h - $radius), $radius, $radius, 90, 90)
     $path.CloseFigure()
 
     if ($alt) { $g.FillPath($boxBrushAlt, $path); $g.DrawPath($borderPenAlt, $path) }
     else      { $g.FillPath($boxBrush, $path);    $g.DrawPath($borderPen, $path) }
 
-    $titleRect = New-Object System.Drawing.RectangleF($x + 10, $y + 10, $w - 20, 24)
+    $titleRect = [System.Drawing.RectangleF]::new(($x + 10), ($y + 10), ($w - 20), 24)
     $g.DrawString($title, $boxFont, $textBrush, $titleRect)
 
-    $subRect = New-Object System.Drawing.RectangleF($x + 10, $y + 36, $w - 20, $h - 42)
+    $subRect = [System.Drawing.RectangleF]::new(($x + 10), ($y + 36), ($w - 20), ($h - 42))
     $g.DrawString($sub, $smallFont, $subBrush, $subRect)
 }
 

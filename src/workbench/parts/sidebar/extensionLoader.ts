@@ -27,7 +27,13 @@ async function _init(): Promise<void> {
 
     for (const l of pkg.contributes?.languages ?? []) {
       if (!l.id) continue;
-      const grammar = (pkg.contributes?.grammars ?? []).find((g: any) => g.language === l.id);
+      // A language id can have multiple grammar entries (e.g. cpp/package.json lists an
+      // embedded-macro partial grammar before the real "source.cpp" grammar) — prefer the
+      // one whose scopeName matches the conventional "source.<langId>" primary scope,
+      // rather than blindly taking the first match.
+      const candidates = (pkg.contributes?.grammars ?? []).filter((g: any) => g.language === l.id);
+      const primary = candidates.find((g: any) => g.scopeName === `source.${l.id}`);
+      const grammar = primary ?? candidates[0];
       _langMap.set(l.id, {
         scopeName: grammar?.scopeName ?? '',
         configPath: l.configuration ? abs(l.configuration) : null,

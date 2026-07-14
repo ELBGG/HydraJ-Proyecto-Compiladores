@@ -26,9 +26,11 @@
   display: flex;
   align-items: center;
   padding: 0 14px;
-  font-size: 11px;
+  font-family: var(--monaco-monospace-font);
+  font-size: 10px;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.8px;
   cursor: pointer;
   color: var(--vscode-panelTitle-inactiveForeground);
   border-bottom: 2px solid transparent;
@@ -73,6 +75,6 @@
 }
 
 .output-line { display: contents; }
-.output-stdout { color: var(--vscode-terminal-foreground, #ccc); }
-.output-stderr { color: var(--vscode-errorForeground, #f48771); }
-.output-info   { color: var(--vscode-descriptionForeground, #888); font-style: italic; }
+.output-stdout { color: var(--vscode-terminal-foreground, #ccd4e2); }
+.output-stderr { color: var(--vscode-errorForeground, #f26d6d); }
+.output-info   { color: var(--vscode-descriptionForeground, #8a93a6); font-style: italic; }

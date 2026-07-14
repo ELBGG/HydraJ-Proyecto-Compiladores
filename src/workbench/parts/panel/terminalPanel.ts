@@ -7,16 +7,17 @@ export class TerminalPanel {
   private _fitAddon: FitAddon;
   private _id: string;
   private _disposeListeners: Array<() => void> = [];
+  readonly whenReady: Promise<void>;
 
   constructor(private _container: HTMLElement) {
     this._id = `term-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
     this._terminal = new Terminal({
       theme: {
-        background: '#1e1e1e',
-        foreground: '#cccccc',
-        cursor: '#cccccc',
-        selectionBackground: '#264f78',
+        background: '#141822',
+        foreground: '#ccd4e2',
+        cursor: '#ccd4e2',
+        selectionBackground: '#2b4165',
         black: '#000000', red: '#cd3131', green: '#0dbc79', yellow: '#e5e510',
         blue: '#2472c8', magenta: '#bc3fbc', cyan: '#11a8cd', white: '#e5e5e5',
         brightBlack: '#666666', brightRed: '#f14c4c', brightGreen: '#23d18b',
@@ -34,11 +35,14 @@ export class TerminalPanel {
     this._fitAddon = new FitAddon();
     this._terminal.loadAddon(this._fitAddon);
     this._terminal.open(this._container);
-    this._init();
+    // Resolves once the PTY is actually created (or once we've established there's no
+    // Electron backend to create one) — sendCommand() awaits this so a command typed in
+    // right after the terminal is (lazily) constructed doesn't get lost.
+    this.whenReady = this._init();
   }
 
   private async _init(): Promise<void> {
-    const api = (window as any).electronAPI;
+    const api = window.electronAPI;
     if (!api?.terminalOps) {
       this._terminal.write('\r\n  \x1b[33mTerminal solo disponible en Electron.\x1b[0m\r\n');
       this.fit();
@@ -62,37 +66,11 @@ export class TerminalPanel {
     });
     this._disposeListeners.push(removeData, removeExit);
 
-    // Local echo (no PTY — shell won't echo on its own)
-    let _lineBuffer = '';
+    // Real PTY (node-pty/ConPTY) on the main-process side: the shell echoes its
+    // own input and handles line editing, so raw keystrokes are forwarded as-is
+    // with no local echo or buffering — exactly like a native terminal.
     this._terminal.onData((data) => {
-      for (const char of data) {
-        const code = char.charCodeAt(0);
-        if (code === 13) {
-          // Enter
-          this._terminal.write('\r\n');
-          api.terminalOps.write(this._id, _lineBuffer + '\n');
-          _lineBuffer = '';
-          return;
-        } else if (code === 127 || code === 8) {
-          // Backspace
-          if (_lineBuffer.length > 0) {
-            _lineBuffer = _lineBuffer.slice(0, -1);
-            this._terminal.write('\b \b');
-          }
-        } else if (code >= 32 && code < 127) {
-          _lineBuffer += char;
-          this._terminal.write(char);
-        } else if (code === 3) {
-          // Ctrl+C
-          _lineBuffer = '';
-          this._terminal.write('^C\r\n');
-          api.terminalOps.write(this._id, '\x03');
-        } else {
-          // Pass other control sequences (arrows etc.) directly
-          api.terminalOps.write(this._id, data);
-          return;
-        }
-      }
+      api.terminalOps.write(this._id, data);
     });
 
     this.fit();
@@ -103,7 +81,7 @@ export class TerminalPanel {
       this._fitAddon.fit();
       const dims = this._fitAddon.proposeDimensions();
       if (dims) {
-        (window as any).electronAPI?.terminalOps?.resize(this._id, dims.cols, dims.rows);
+        window.electronAPI?.terminalOps?.resize(this._id, dims.cols, dims.rows);
       }
     } catch {
       // fit may fail before the terminal has a size
@@ -114,8 +92,18 @@ export class TerminalPanel {
     this._terminal.focus();
   }
 
+  /** Types `command` into the PTY as if the user had, then presses Enter — for driving a
+   *  real, interactive shell command (e.g. compiling and running a program that reads
+   *  stdin) from outside the terminal, rather than the isolated run:execute pipe. */
+  async sendCommand(command: string): Promise<void> {
+    await this.whenReady;
+    const api = window.electronAPI;
+    if (!api?.terminalOps) return;
+    await api.terminalOps.write(this._id, command + '\r');
+  }
+
   dispose(): void {
-    const api = (window as any).electronAPI;
+    const api = window.electronAPI;
     if (api?.terminalOps) {
       api.terminalOps.kill(this._id);
       for (const fn of this._disposeListeners) fn();
