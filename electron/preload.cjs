@@ -14,9 +14,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     saveAs: (content)           => ipcRenderer.invoke('file:save-as', { content }),
   },
   folderOps: {
-    open:     ()         => ipcRenderer.invoke('folder:open'),
-    readDir:  (dirPath)  => ipcRenderer.invoke('folder:read-dir',  { path: dirPath }),
-    readFile: (filePath) => ipcRenderer.invoke('folder:read-file', { path: filePath }),
+    open:       ()                          => ipcRenderer.invoke('folder:open'),
+    readDir:    (dirPath)                   => ipcRenderer.invoke('folder:read-dir',    { path: dirPath }),
+    readFile:   (filePath)                  => ipcRenderer.invoke('folder:read-file',   { path: filePath }),
+    createFile: (dirPath, name, content)    => ipcRenderer.invoke('folder:create-file', { dirPath, name, content }),
   },
   modelOps: {
     save: (id, data) => ipcRenderer.invoke('model:save', { id, data }),

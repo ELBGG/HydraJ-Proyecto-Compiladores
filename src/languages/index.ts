@@ -15,6 +15,7 @@ export { javaTokens, javaSpanish, registerJavaLanguages } from './java/index.js'
 export { cTokens, cSpanish, registerCLanguages } from './c/index.js';
 export { cppTokens, cppSpanish, registerCppLanguages } from './cpp/index.js';
 export { pythonTokens, pythonSpanish, registerPythonLanguages } from './python/index.js';
+export { goSpanish, registerGoLanguages } from './go/index.js';
 
 export function registerAllLanguages(): void {
   // All languages registered via ExtensionRegistry on startup (pre-installed seed)

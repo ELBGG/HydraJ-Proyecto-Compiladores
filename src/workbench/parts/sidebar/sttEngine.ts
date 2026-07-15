@@ -37,11 +37,34 @@ export class STTEngine {
       }
 
       this._setStatus('loading');
-      const Vosk = await import('vosk-browser');
+      // vosk-browser ships a UMD bundle (dist/vosk.js), not a real ES module — it has no
+      // `export` statements at all, only a `(function(global, factory) {...})(this,
+      // function(exports) { ...; exports.createModel = createModel; })` wrapper that
+      // falls through to `global.Vosk = {}` when it doesn't detect CommonJS/AMD (true
+      // here: contextIsolation removes Node's `module`/`exports` from this renderer).
+      // vite.config.ts's optimizeDeps.exclude keeps Vite dev from pre-bundling it, so
+      // dev mode serves this raw file — import()ing it just *runs* the UMD wrapper as a
+      // plain script with an empty ESM namespace; the real API only exists afterward as
+      // the `window.Vosk` global the fallback branch sets. The production build DOES go
+      // through Rollup's CJS interop, which instead synthesizes a `.default`-shaped
+      // export. Three different shapes depending on how/where this runs — check all of
+      // them rather than assuming one.
+      const VoskModule = await import('vosk-browser');
+      const createModel =
+        (VoskModule as any).createModel
+        ?? (VoskModule as any).default?.createModel
+        ?? (globalThis as any).Vosk?.createModel;
+      if (typeof createModel !== 'function') {
+        // Diagnostic detail (module namespace keys + whether the UMD global fallback
+        // landed) in case none of the three known shapes matched — cheaper to log this
+        // now than to add another logging round-trip if this ever needs debugging again.
+        console.error('[STT] vosk-browser shape check failed. Module keys:', Object.keys(VoskModule as object), 'globalThis.Vosk:', (globalThis as any).Vosk);
+        throw new Error('No se pudo cargar vosk-browser: createModel no está disponible en el módulo importado.');
+      }
       const blob = new Blob([buffer], { type: 'application/zip' });
       const blobUrl = URL.createObjectURL(blob);
 
-      this._model = await (Vosk as any).createModel(blobUrl);
+      this._model = await createModel(blobUrl);
       URL.revokeObjectURL(blobUrl);
 
       this._setStatus('ready');

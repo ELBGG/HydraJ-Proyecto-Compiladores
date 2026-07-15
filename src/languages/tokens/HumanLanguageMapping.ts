@@ -1,4 +1,4 @@
-import type { IHumanLanguageMapping, IMultiWordPattern } from '../tokens/types.js';
+import type { IHumanLanguageMapping, IMultiWordPattern, IBlockCodeTemplate } from '../tokens/types.js';
 
 export class HumanLanguageMapping implements IHumanLanguageMapping {
   readonly keywords: Record<string, string>;
@@ -7,6 +7,7 @@ export class HumanLanguageMapping implements IHumanLanguageMapping {
   readonly modifiers: Record<string, string>;
   readonly patterns: IMultiWordPattern[];
   readonly version?: string;
+  readonly blockTemplate?: IBlockCodeTemplate;
 
   constructor(
     readonly id: string,
@@ -20,6 +21,7 @@ export class HumanLanguageMapping implements IHumanLanguageMapping {
       literals?: Record<string, string>;
       modifiers?: Record<string, string>;
       patterns?: IMultiWordPattern[];
+      blockTemplate?: IBlockCodeTemplate;
     },
   ) {
     this.keywords = defs.keywords ?? {};
@@ -28,5 +30,6 @@ export class HumanLanguageMapping implements IHumanLanguageMapping {
     this.modifiers = defs.modifiers ?? {};
     this.patterns = defs.patterns ?? [];
     this.version = defs.version;
+    this.blockTemplate = defs.blockTemplate;
   }
 }

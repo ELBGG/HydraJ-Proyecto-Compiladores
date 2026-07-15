@@ -13,6 +13,15 @@ describe('codeParser', () => {
     expect(blocks[0].type).toBe('clase');
   });
 
+  it('parses a Go-style "funcion principal()" as the dedicated main block', () => {
+    const code = `funcion principal() {
+  fmt.Println("Hola")
+}`;
+    const blocks = parseCodeToBlocks(code);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].type).toBe('main');
+  });
+
   it('parses if-else blocks', () => {
     const code = `si (verdadero) {
   sistema.imprimir("si");
@@ -91,7 +100,7 @@ describe('codeParser', () => {
     expect(children).toHaveLength(8);
     expect(children.filter(c => /^caso /.test(c.params))).toHaveLength(2);
     expect(children.some(c => c.params === 'defecto:')).toBe(true);
-    expect(children.filter(c => c.params === 'romper;')).toHaveLength(2);
+    expect(children.filter(c => c.type === 'romper')).toHaveLength(2);
     expect(children.filter(c => c.type === 'imprimir')).toHaveLength(3);
   });
 

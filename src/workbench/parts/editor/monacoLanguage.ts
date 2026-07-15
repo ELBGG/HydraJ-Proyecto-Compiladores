@@ -14,20 +14,31 @@ import { applyTheme } from './textmate/theme.js';
 // Register Dark+ theme immediately (synchronous — no WASM needed).
 applyTheme();
 
-// These 4 languages have existing HumanLanguageMappings and support Spanish injection.
-const SPANISH_LANGS = new Set(['java', 'c', 'cpp', 'python']);
-
 /** Monaco language ID for the given prog+human language pair.
  *  Synchronous — safe to call before ensureLanguage resolves. */
 export function getHydraLangId(progLang: string, humanLang: string): string {
   return `hydra-${progLang}-${humanLang}`;
 }
 
-/** Final Monaco language ID: hydra-<prog>-<human> if there's an ES mapping, else progLang. */
+/** Whether progLang+humanLang should use the Spanish-injected Monaco language id.
+ *  Requires BOTH a registered HumanLanguageMapping AND a real bundled/installed
+ *  TextMate grammar for progLang to inject Spanish patterns into — a mapping alone
+ *  isn't enough, since injection has nothing to attach to without a base grammar.
+ *  Driven entirely by LanguageRegistry + the extension loader, not a fixed language
+ *  list, so this automatically activates for any newly-added mapping (Go included)
+ *  the moment a matching grammar is bundled — no code change needed at that point.
+ *  Shared by getMonacoLangId and ensureLanguage so both always agree on the same id;
+ *  disagreeing would mean the model's language id and the id a tokenizer eventually
+ *  gets registered for are different, silently leaving the model unhighlighted. */
+function shouldUseSpanishInjection(progLang: string, humanLang: string): boolean {
+  return !!getScopeForLang(progLang) && !!LanguageRegistry.getMapping(progLang, humanLang);
+}
+
+/** Final Monaco language ID: hydra-<prog>-<human> if Spanish injection applies, else
+ *  plain progLang (still gets Monaco's own built-in colorizer when one exists). */
 export function getMonacoLangId(progLang: string, humanLang: string): string {
   if (!progLang) return 'plaintext';
-  const hasMapping = SPANISH_LANGS.has(progLang) && !!LanguageRegistry.getMapping(progLang, humanLang);
-  return hasMapping ? getHydraLangId(progLang, humanLang) : progLang;
+  return shouldUseSpanishInjection(progLang, humanLang) ? getHydraLangId(progLang, humanLang) : progLang;
 }
 
 /** Registers a TextMate token provider for the given language pair.
@@ -37,7 +48,7 @@ export async function ensureLanguage(progLang: string, humanLang: string): Promi
   await waitReady();
   const scopeName = getScopeForLang(progLang);
   if (!scopeName) return; // no extension loaded for this language (yet)
-  const useSpanish = SPANISH_LANGS.has(progLang) && !!LanguageRegistry.getMapping(progLang, humanLang);
+  const useSpanish = shouldUseSpanishInjection(progLang, humanLang);
   const monacoLangId = useSpanish ? getHydraLangId(progLang, humanLang) : progLang;
   await ensureTextMateLanguage(monacoLangId, scopeName, useSpanish);
 }

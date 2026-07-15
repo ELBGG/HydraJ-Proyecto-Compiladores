@@ -4,7 +4,7 @@ import * as Blockly from 'blockly/core';
    Block Definitions (JSON)
    ─────────────────────────────────────────────────────────────────────────── */
 
-const BLOCK_DEFS = [
+export const BLOCK_DEFS = [
   // ── Hat blocks (no previousStatement) ──────────────────────────────────
   {
     type: 'hc_clase',
@@ -223,6 +223,22 @@ const BLOCK_DEFS = [
     colour: 350,
     tooltip: 'Lanzar una excepción',
   },
+  {
+    type: 'hc_romper',
+    message0: 'romper',
+    previousStatement: null,
+    nextStatement: null,
+    colour: 35,
+    tooltip: 'Sale del bucle o del cambiar actual',
+  },
+  {
+    type: 'hc_continuar',
+    message0: 'continuar',
+    previousStatement: null,
+    nextStatement: null,
+    colour: 35,
+    tooltip: 'Salta a la siguiente iteración del bucle',
+  },
 ];
 
 /* ───────────────────────────────────────────────────────────────────────────
@@ -243,6 +259,8 @@ const TOOLBOX_XML = `
     <block type="hc_hacer"/>
     <block type="hc_para"/>
     <block type="hc_cambiar"/>
+    <block type="hc_romper"/>
+    <block type="hc_continuar"/>
   </category>
   <category name="Variables" colour="230">
     <block type="hc_entero"/>
@@ -300,102 +318,41 @@ const HYDRACODE_THEME = Blockly.Theme.defineTheme('hydracode-dark', {
 });
 
 /* ───────────────────────────────────────────────────────────────────────────
-   Code Generator (Java Español)
+   Code Generators — one generic engine, driven by each mapping's blockTemplate
    ─────────────────────────────────────────────────────────────────────────── */
 
-const generator = new Blockly.CodeGenerator('JavaEspanol');
-generator.INDENT = '    ';
+import { LanguageRegistry } from '../../../languages/index.js';
+import { buildGenericGenerator, finalizeGeneratedCode } from './blocklyGenerators/genericGenerator.js';
+import type { IHydraCodeGenerator } from './blocklyGenerators/genericGenerator.js';
 
-generator.forBlock['hc_clase'] = function (block, gen) {
-  const name = block.getFieldValue('NAME');
-  const body = gen.statementToCode(block, 'BODY');
-  return `clase ${name} {\n${body}}\n`;
-};
+const generatorCache = new Map<string, IHydraCodeGenerator | null>();
 
-generator.forBlock['hc_main'] = function (block, gen) {
-  const body = gen.statementToCode(block, 'BODY');
-  return `publico estatico vacio principal(cadena[] argumentos) {\n${body}}\n`;
-};
-
-generator.forBlock['hc_metodo'] = function (block, gen) {
-  const signature = block.getFieldValue('SIGNATURE');
-  const body = gen.statementToCode(block, 'BODY');
-  return `${signature} {\n${body}}\n`;
-};
-
-function genSiSino(block: Blockly.Block, gen: Blockly.CodeGenerator): string {
-  const cond = block.getFieldValue('COND');
-  const body = gen.statementToCode(block, 'DO');
-  const elseBody = gen.statementToCode(block, 'ELSE');
-  if (elseBody) {
-    return `si (${cond}) {\n${body}} sino {\n${elseBody}}\n`;
-  }
-  return `si (${cond}) {\n${body}}\n`;
+/** Looks up (or lazily builds + caches) the Blockly code generator for a prog
+ *  language + human language pair, reading its vocabulary and blockTemplate
+ *  straight from LanguageRegistry — no per-language TypeScript file involved.
+ *
+ *  Returns null when there is no registered mapping for the pair, or the mapping
+ *  exists but declares no blockTemplate. Callers MUST treat null as "Blocks mode
+ *  unavailable for this language" (see isBlocksModeSupported below) rather than
+ *  substituting a different language's generator — silently emitting, say, Java
+ *  syntax into a Go file would be worse than not offering the feature at all. */
+function generatorFor(progLang: string, humanLang: string): IHydraCodeGenerator | null {
+  const key = `${progLang}::${humanLang}`;
+  const cached = generatorCache.get(key);
+  if (cached !== undefined) return cached;
+  const mapping = LanguageRegistry.getMapping(progLang, humanLang);
+  const gen = mapping ? buildGenericGenerator(mapping) : null;
+  generatorCache.set(key, gen);
+  return gen;
 }
-generator.forBlock['hc_si'] = genSiSino;
 
-generator.forBlock['hc_mientras'] = function (block, gen) {
-  const cond = block.getFieldValue('COND');
-  const body = gen.statementToCode(block, 'DO');
-  return `mientras (${cond}) {\n${body}}\n`;
-};
-
-generator.forBlock['hc_hacer'] = function (block, gen) {
-  const body = gen.statementToCode(block, 'DO');
-  const cond = block.getFieldValue('COND');
-  return `hacer {\n${body}} mientras (${cond});\n`;
-};
-
-generator.forBlock['hc_para'] = function (block, gen) {
-  const init = block.getFieldValue('INIT');
-  const body = gen.statementToCode(block, 'DO');
-  return `para (${init}) {\n${body}}\n`;
-};
-
-generator.forBlock['hc_cambiar'] = function (block, gen) {
-  const variable = block.getFieldValue('VAR');
-  const body = gen.statementToCode(block, 'DO');
-  return `cambiar (${variable}) {\n${body}}\n`;
-};
-
-generator.forBlock['hc_intentar'] = function (block, gen) {
-  const exc = block.getFieldValue('EXC');
-  const body = gen.statementToCode(block, 'DO');
-  const catchBody = gen.statementToCode(block, 'CATCH');
-  return `intentar {\n${body}} capturar (${exc}) {\n${catchBody}}\n`;
-};
-
-function genPrint(block: Blockly.Block, _gen: Blockly.CodeGenerator): string {
-  const text = block.getFieldValue('TEXT');
-  return `sistema.imprimir(${text});\n`;
+/** Whether Blocks mode can generate code for this prog+human language pair right
+ *  now. UI should check this before switching into Blocks mode and refuse (like
+ *  the existing "code too complex to parse" guard) rather than opening an empty
+ *  or non-functional canvas. */
+export function isBlocksModeSupported(progLang: string, humanLang: string): boolean {
+  return generatorFor(progLang, humanLang) !== null;
 }
-generator.forBlock['hc_imprimir'] = genPrint;
-generator.forBlock['hc_imprimir_error'] = function (block, _gen) {
-  const text = block.getFieldValue('TEXT');
-  return `sistema.imprimir_error(${text});\n`;
-};
-
-function genVarDecl(block: Blockly.Block, _gen: Blockly.CodeGenerator): string {
-  const varName = block.getFieldValue('VAR');
-  return `${block.type.replace('hc_', '')} ${varName};\n`;
-}
-generator.forBlock['hc_entero'] = genVarDecl;
-generator.forBlock['hc_cadena'] = genVarDecl;
-generator.forBlock['hc_booleano'] = genVarDecl;
-generator.forBlock['hc_doble'] = genVarDecl;
-generator.forBlock['hc_flotante'] = genVarDecl;
-generator.forBlock['hc_largo'] = genVarDecl;
-generator.forBlock['hc_caracter'] = genVarDecl;
-generator.forBlock['hc_corto'] = genVarDecl;
-generator.forBlock['hc_var'] = genVarDecl;
-
-generator.forBlock['hc_retornar'] = function (block, _gen) {
-  return `retornar ${block.getFieldValue('VALUE')};\n`;
-};
-
-generator.forBlock['hc_lanzar'] = function (block, _gen) {
-  return `lanzar nuevo ${block.getFieldValue('EXC')};\n`;
-};
 
 /* ───────────────────────────────────────────────────────────────────────────
    Block Model Converter (Block[] → Blockly XML)
@@ -413,6 +370,7 @@ const BLOCK_TYPE_MAP: Record<string, string> = {
   doble: 'hc_doble', flotante: 'hc_flotante', largo: 'hc_largo',
   corto: 'hc_corto', caracter: 'hc_caracter', var: 'hc_var',
   retornar: 'hc_retornar', lanzar: 'hc_lanzar',
+  romper: 'hc_romper', continuar: 'hc_continuar',
 };
 
 function blockTypeFieldName(blocklyType: string): string | null {
@@ -521,13 +479,31 @@ export class BlocklySession {
   private workspace: Blockly.WorkspaceSvg | null = null;
   private changeListeners: Set<() => void> = new Set();
   private _initialized = false;
+  private _progLang = 'java';
+  private _humanLang = 'es';
 
   get isActive(): boolean {
     return this.workspace !== null;
   }
 
-  create(container: HTMLElement): void {
+  /** Which language getCode() generates for — must be set before/at create() to match
+   *  whatever prog+human language pair the tab being edited actually uses. The actual
+   *  generator is resolved from LanguageRegistry's blockTemplate for that pair (see
+   *  blocklyGenerators/genericGenerator.ts) — there is no fixed list of languages here. */
+  setLanguage(progLang: string, humanLang: string): void {
+    this._progLang = progLang;
+    this._humanLang = humanLang;
+  }
+
+  /** Whether the currently-set language pair can actually generate code. */
+  supportsCurrentLanguage(): boolean {
+    return isBlocksModeSupported(this._progLang, this._humanLang);
+  }
+
+  create(container: HTMLElement, progLang?: string, humanLang?: string): void {
     if (this.workspace) this.dispose();
+    if (progLang) this._progLang = progLang;
+    if (humanLang) this._humanLang = humanLang;
 
     Blockly.defineBlocksWithJsonArray(BLOCK_DEFS);
 
@@ -596,21 +572,30 @@ export class BlocklySession {
     return block;
   }
 
-  /** Generate Java-espanol code from the workspace */
-  getCode(): string {
+  /** Generate Spanish-keyword source for whichever prog+human language pair is
+   *  active (see setLanguage()) from the workspace. Returns null if that pair has
+   *  no blockTemplate-bearing mapping — callers must handle this explicitly (e.g.
+   *  by keeping the tab's last-saved text content) instead of writing out code
+   *  from the wrong language's generator. */
+  getCode(): string | null {
     if (!this.workspace) return '';
+
+    const gen = generatorFor(this._progLang, this._humanLang);
+    if (!gen) return null;
 
     const topBlocks = this.workspace.getTopBlocks(true);
     if (topBlocks.length === 0) return '';
 
     let code = '';
     for (const block of topBlocks) {
-      const blockCode = generator.blockToCode(block);
+      const blockCode = gen.blockToCode(block);
       if (blockCode !== null) {
         code += blockCode as string;
       }
     }
-    return code;
+
+    const template = LanguageRegistry.getMapping(this._progLang, this._humanLang)?.blockTemplate;
+    return template ? finalizeGeneratedCode(code, gen, template) : code;
   }
 
   /** Load blocks from our Block[] model into the workspace */

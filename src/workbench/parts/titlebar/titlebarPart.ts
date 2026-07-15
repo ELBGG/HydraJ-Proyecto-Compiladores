@@ -7,6 +7,8 @@ import type { PanelPart } from '../panel/panelPart.js';
 import type { RunEngine } from '../sidebar/runEngine.js';
 import type { Layout } from '../../layout.js';
 import { iconHydraCode, createIconElement } from '../../../base/browser/icons.js';
+import { LanguageRegistry } from '../../../languages/index.js';
+import { buildStarterFile } from '../editor/fileTemplates.js';
 
 export class TitlebarPart extends Part {
   private _editor: EditorPart | null = null;
@@ -16,6 +18,7 @@ export class TitlebarPart extends Part {
   private _layout: Layout | null = null;
   private _dropdownOpen: HTMLElement | null = null;
   private _goToFileOverlay: HTMLElement | null = null;
+  private _newFileModal: HTMLElement | null = null;
   private readonly _bodyDropdowns: HTMLElement[] = [];
 
   constructor() {
@@ -293,7 +296,119 @@ export class TitlebarPart extends Part {
   // ── File actions ──────────────────────────────────────────────────────────
 
   onNewFile(): void {
-    this._editor?.newFile();
+    this._showNewFileModal();
+  }
+
+  // ── New File modal ────────────────────────────────────────────────────────
+  // A real "mini window" (centered + backdrop) rather than the anchored quick-pick
+  // style of _showGoToFile/_showLangPicker — it asks a single yes/no question (what do
+  // you want to name this file?) rather than filtering a list, and clicking anywhere
+  // outside it should unambiguously cancel, which a full-screen backdrop gives for free
+  // without the click-outside timing dance those overlays need (see their comments).
+
+  private _showNewFileModal(): void {
+    if (this._newFileModal) return;
+
+    const backdrop = $('div', ['new-file-backdrop']);
+    const modal = $('div', ['new-file-modal']);
+
+    const title = $('div', ['new-file-title']);
+    title.textContent = 'Nuevo archivo';
+    append(modal, title);
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = 'nombre.ext (p. ej. principal.java)';
+    input.className = 'new-file-input';
+    append(modal, input);
+
+    const errorEl = $('div', ['new-file-error']);
+    append(modal, errorEl);
+
+    const actions = $('div', ['new-file-actions']);
+    const cancelBtn = $('button', ['new-file-btn', 'new-file-btn-cancel']);
+    cancelBtn.textContent = 'Cancelar';
+    const createBtn = $('button', ['new-file-btn', 'new-file-btn-create']);
+    createBtn.textContent = 'Crear';
+    append(actions, cancelBtn);
+    append(actions, createBtn);
+    append(modal, actions);
+
+    const close = () => {
+      backdrop.remove();
+      modal.remove();
+      this._newFileModal = null;
+    };
+
+    const confirm = async () => {
+      const name = input.value.trim();
+      if (!name) {
+        errorEl.textContent = 'Escribe un nombre de archivo.';
+        return;
+      }
+      errorEl.textContent = '';
+      input.disabled = true;
+      createBtn.disabled = true;
+      const result = await this._createNewFile(name);
+      if (result === true) {
+        close();
+        return;
+      }
+      input.disabled = false;
+      createBtn.disabled = false;
+      errorEl.textContent = result;
+      requestAnimationFrame(() => input.focus());
+    };
+
+    cancelBtn.addEventListener('click', close);
+    backdrop.addEventListener('click', close);
+    createBtn.addEventListener('click', () => { void confirm(); });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') void confirm();
+      else if (e.key === 'Escape') close();
+    });
+
+    // Whatever currently has focus (most commonly Monaco's own hidden textarea, once a
+    // file's editor has been shown at least once) needs to explicitly let go before this
+    // input can reliably take over — a bare input.focus() here lost the race often
+    // enough in practice (worked opening the very first file, when nothing owned focus
+    // yet; silently failed to actually move focus on every subsequent attempt) that a
+    // synchronous blur followed by a deferred focus is worth the extra complexity.
+    (document.activeElement as HTMLElement | null)?.blur();
+
+    document.body.appendChild(backdrop);
+    document.body.appendChild(modal);
+    this._newFileModal = modal;
+    requestAnimationFrame(() => input.focus());
+  }
+
+  /** Detects the language from `name`'s extension, builds its Spanish starter content,
+   *  and creates the file for real inside the open workspace folder — or, if none is
+   *  open (or this isn't running under Electron at all), falls back to an in-memory-
+   *  only tab the user saves normally later. Returns true on success, or a
+   *  user-facing error message string (e.g. a duplicate name) to show inline instead
+   *  of closing the modal. */
+  private async _createNewFile(name: string): Promise<true | string> {
+    if (!this._editor) return 'El editor no está listo todavía.';
+
+    const progLang = this._editor.detectProgLang(name);
+    const humanLang = this._editor.getCurrentHumanLang();
+    const mapping = LanguageRegistry.getMapping(progLang, humanLang);
+    const baseName = name.replace(/\.[^./\\]+$/, '');
+    const content = buildStarterFile(mapping, baseName) ?? '';
+
+    const workspacePath = this._sidebar?.getWorkspacePath();
+    const api = window.electronAPI;
+
+    if (workspacePath && api) {
+      const result = await api.folderOps.createFile(workspacePath, name, content);
+      if (!result.success || !result.path) return result.error ?? 'No se pudo crear el archivo.';
+      this._editor.openFile({ path: result.path, label: name, content });
+      return true;
+    }
+
+    this._editor.newFileWithTemplate(name, progLang, content);
+    return true;
   }
 
   async onOpenFile(): Promise<void> {

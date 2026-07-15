@@ -14,7 +14,7 @@ const KW_RETURN   = /^(?:retornar|return)\b/;
 const KW_THROW    = /^(?:lanzar|throw)\b/;
 const KW_BREAK    = /^(?:romper|break)\s*;?\s*$/;
 const KW_CONTINUE = /^(?:continuar|continue)\s*;?\s*$/;
-const KW_MAIN     = /(?:publico\s+estatico\s+vacio\s+principal|public\s+static\s+void\s+main|(?:int|void)\s+main)\s*\(/;
+const KW_MAIN     = /(?:publico\s+estatico\s+vacio\s+principal|public\s+static\s+void\s+main|(?:int|void)\s+main|(?:funcion|func)\s+(?:principal|main))\s*\(/;
 const KW_METHOD   = /^(?:publico|privado|protegido|public|private|protected)\s+/;
 
 // Detect Python-style (no braces, indentation-based)
@@ -376,12 +376,12 @@ function parseOneLine(lines: string[], i: number, depth = 0): { block: Block; co
 
   // ── break / romper ──────────────────────────────────────────────────
   if (KW_BREAK.test(t)) {
-    return { block: makeBlock('stack', 'raw', 'romper', 'romper;', '#888888'), consumed: 1 };
+    return { block: makeBlock('stack', 'romper', 'romper', '', '#ffab19'), consumed: 1 };
   }
 
   // ── continue / continuar ────────────────────────────────────────────
   if (KW_CONTINUE.test(t)) {
-    return { block: makeBlock('stack', 'raw', 'continuar', 'continuar;', '#888888'), consumed: 1 };
+    return { block: makeBlock('stack', 'continuar', 'continuar', '', '#ffab19'), consumed: 1 };
   }
 
   // ── variable declaration ───────────────────────────────────────────────

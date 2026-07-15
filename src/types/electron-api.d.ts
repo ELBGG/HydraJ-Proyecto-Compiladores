@@ -23,6 +23,7 @@ interface ElectronFolderOps {
   open():                                   Promise<{ canceled: true } | { canceled: false; path: string }>;
   readDir(dirPath: string):                 Promise<{ success: boolean; entries: ElectronDirEntry[]; error?: string }>;
   readFile(filePath: string):               Promise<{ success: boolean; content: string; error?: string }>;
+  createFile(dirPath: string, name: string, content: string): Promise<{ success: boolean; path?: string; error?: string }>;
 }
 
 interface ElectronModelOps {

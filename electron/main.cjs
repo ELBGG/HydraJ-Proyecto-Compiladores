@@ -26,8 +26,24 @@ function createWindow() {
 
   win.once('ready-to-show', () => win.show());
 
+  // Surfaces the exact reason (crashed/oom/killed/launch-failed/...) if the renderer
+  // process ever dies unexpectedly, instead of the window just silently closing with
+  // no trace of why in this log.
+  win.webContents.on('render-process-gone', (_event, details) => {
+    console.error('[HydraCode] Renderer process gone:', details);
+  });
+
+  // Forwards renderer console.* calls (including uncaught JS errors, which the
+  // renderer logs to its own console) into this process's stdout — otherwise they're
+  // only visible in DevTools, invisible to this log file.
+  win.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+    const levelName = ['LOG', 'WARN', 'ERROR'][level] ?? 'INFO';
+    console.log(`[renderer:${levelName}] ${message} (${sourceId}:${line})`);
+  });
+
   if (isDev) {
     win.loadURL('http://localhost:5173');
+    win.webContents.openDevTools();
   } else {
     win.loadFile(path.join(__dirname, '../dist/index.html'));
   }
@@ -120,6 +136,21 @@ ipcMain.handle('folder:read-file', async (_event, { path: filePath }) => {
     return { success: true, content };
   } catch (err) {
     return { success: false, content: '', error: String(err) };
+  }
+});
+
+ipcMain.handle('folder:create-file', async (_event, { dirPath, name, content }) => {
+  const filePath = safeChildPath(dirPath, name);
+  if (!filePath) return { success: false, error: 'Nombre de archivo inválido.' };
+  try {
+    // flag 'wx': create-only, fails with EEXIST instead of silently overwriting — the
+    // safe way to do this (an exists-check followed by a separate write has a race
+    // between the two calls; this is atomic).
+    await fs.promises.writeFile(filePath, content ?? '', { encoding: 'utf-8', flag: 'wx' });
+    return { success: true, path: filePath };
+  } catch (err) {
+    if (err.code === 'EEXIST') return { success: false, error: 'Ya existe un archivo con ese nombre.' };
+    return { success: false, error: String(err) };
   }
 });
 

@@ -57,5 +57,27 @@ export const cppSpanish = new HumanLanguageMapping(
       'falso': 'false',
       'nulo': 'nullptr',
     },
+    blockTemplate: {
+      style: 'braces',
+      main: 'entero principal()',
+      class: 'clase {NAME}', classTrailingSemicolon: true,
+      method: '{SIGNATURE}',
+      lineComment: '//',
+      ifKeyword: 'si', elseKeyword: 'sino', whileKeyword: 'mientras', forKeyword: 'para', doKeyword: 'hacer',
+      supportsDoWhile: true, forStyle: 'c-style',
+      switchKeyword: 'cambiar', supportsTryCatch: true, tryKeyword: 'intentar', catchKeyword: 'capturar',
+      // No 'escribir'-style Spanish pattern is registered for C++ — cout/endl are used
+      // verbatim, the same way codeParser.ts already recognizes real `cout <<` on parse.
+      print: 'cout << {TEXT} << endl', printError: 'cerr << {TEXT} << endl',
+      // cout/cerr/endl are used bare above (not std::cout etc.), so both the include
+      // AND the using-directive are required for either to actually compile.
+      preamble: {
+        print: ['#include <iostream>', 'using namespace std;'],
+        printError: ['#include <iostream>', 'using namespace std;'],
+      },
+      varDecl: '{TYPE} {VAR}',
+      returnKeyword: 'retornar', throwTemplate: 'lanzar {EXC}',
+      breakKeyword: 'romper', continueKeyword: 'continuar',
+    },
   },
 );

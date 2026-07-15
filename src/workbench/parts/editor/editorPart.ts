@@ -3,18 +3,20 @@ import './transpileEditor.css';
 import * as monaco from 'monaco-editor';
 import { Part } from '../../part.js';
 import { $, append } from '../../../base/browser/dom.js';
+import { Emitter } from '../../../base/common/event.js';
 import { TranspilerEngine } from '../../../languages/index.js';
 import { ensureLanguage, getMonacoLangId } from './monacoLanguage.js';
 import { getExtToLangMap } from '../sidebar/extensionLoader.js';
 import { parseCodeToBlocks } from './codeParser.js';
 import type { ExtensionRegistry } from '../sidebar/extensionRegistry.js';
+import { registerIntelligence, refreshDiagnostics } from './languageIntelligence.js';
 
 import {
   iconFile, iconFileCode, iconClose, iconTranspile,
   iconLightning, iconChevronDown, iconChevronUp, iconBlocks,
   createIconElement,
 } from '../../../base/browser/icons.js';
-import { BlocklySession } from './blocklyRenderer.js';
+import { BlocklySession, isBlocksModeSupported } from './blocklyRenderer.js';
 
 interface OpenTab {
   id: string;
@@ -41,12 +43,18 @@ export class EditorPart extends Part {
   private _outputVisible = false;
   private _currentProgLang = 'java';
   private _currentHumanLang = 'es';
-  private _untitledCounter = 1;
   private _extensionRegistry: ExtensionRegistry | null = null;
 
   // ── Block canvas state ────────────────────────────────────────────────────
   private _blocksMode = false;
   private _blocklySession = new BlocklySession();
+
+  /** Fires whenever the active tab's detected prog language becomes known — on
+   *  opening a file and on switching tabs — so the status bar chip (which owns its
+   *  own independent language state, only otherwise updated by the user manually
+   *  picking a language) stays in sync with whatever file is actually showing. */
+  private readonly _onActiveLanguageChange = this._register(new Emitter<{ progLang: string; humanLang: string }>());
+  readonly onActiveLanguageChange = this._onActiveLanguageChange.event;
 
   constructor() {
     super('editor', { hasTitle: false });
@@ -93,15 +101,18 @@ export class EditorPart extends Part {
     this._monacoEditor?.setValue(text);
   }
 
-  /** Opens a brand-new, unsaved tab (Ctrl+N / File > New File). Unlike setContent(), this
-   *  works correctly from any state, including the initial welcome screen where no Monaco
+  /** Opens a brand-new, in-memory-only tab (no disk path) with the given label/language/
+   *  content already filled in — the fallback New File path (titlebarPart.ts) uses when
+   *  no workspace folder is open to create a real file into. Unlike openFile(), never
+   *  dedups against existing tabs by path (every such tab's path is null, so an
+   *  equality check would incorrectly treat them all as "the same file"). Works
+   *  correctly from any state, including the initial welcome screen where no Monaco
    *  editor is mounted yet — setContent() alone would silently no-op there. */
-  newFile(): void {
+  newFileWithTemplate(label: string, progLang: string, content: string): void {
     const id = `untitled-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const label = `Untitled-${this._untitledCounter++}`;
-    const tab: OpenTab = { id, path: null, label, icon: 'file-code', progLang: this._currentProgLang };
+    const tab: OpenTab = { id, path: null, label, icon: this._fileIcon(label), progLang };
     this._tabs.push(tab);
-    this._tabContents.set(id, '');
+    this._tabContents.set(id, content);
     this._addTab(tab);
     this._activateTab(id);
   }
@@ -109,9 +120,13 @@ export class EditorPart extends Part {
   setLanguage(progLang: string, humanLang: string): void {
     this._currentProgLang = progLang;
     this._currentHumanLang = humanLang;
+    // Keep the block generator in sync even if this fires while Blocks mode is active
+    // (no-op if the session isn't currently active).
+    this._blocklySession.setLanguage(progLang, humanLang);
     if (this._monacoEditor) {
       const langId = getMonacoLangId(progLang, humanLang);
-      ensureLanguage(progLang, humanLang); // async; Monaco retokenizes when provider registers
+      ensureLanguage(progLang, humanLang).catch(err => console.error('Failed to register grammar for', progLang, humanLang, err)); // async; Monaco retokenizes when provider registers
+      registerIntelligence(langId, progLang, humanLang); // completion+hover; sync, no need to await ensureLanguage
       const model = this._monacoEditor.getModel();
       if (model) monaco.editor.setModelLanguage(model, langId);
       this._doTranspile();
@@ -121,7 +136,7 @@ export class EditorPart extends Part {
   openFile(params: { path: string; label: string; content: string }): void {
     const existing = this._tabs.find(t => t.path === params.path);
     if (existing) { this._activateTab(existing.id); return; }
-    const progLang = this._detectProgLang(params.label);
+    const progLang = this.detectProgLang(params.label);
     const id = `file-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const tab: OpenTab = { id, path: params.path, label: params.label, icon: this._fileIcon(params.label), progLang };
     this._tabs.push(tab);
@@ -158,6 +173,11 @@ export class EditorPart extends Part {
     if (!this._bodyContainer) return;
 
     if (enabled) {
+      const progLang = this.getActiveTabProgLang();
+      if (!isBlocksModeSupported(progLang, this._currentHumanLang)) {
+        alert(`El modo de bloques no está disponible para "${progLang || 'este archivo'}" todavía: su mapping no define una plantilla de bloques (blockTemplate). Consulta LANGUAGE_MAPPINGS.md para añadirla.`);
+        return; // stay in text mode; _blocksMode is untouched and no canvas is shown
+      }
       const code = this._monacoEditor?.getValue() ?? this._tabContents.get(this._activeTabId) ?? '';
       let parsed: import('./blockModel.js').Block[];
       try {
@@ -238,6 +258,8 @@ export class EditorPart extends Part {
     this._activeTabId = id;
     this._tabElements.forEach((el, key) => el.classList.toggle('active', key === id));
     this._showTabContent(id);
+    const tab = this._tabs.find(t => t.id === id);
+    if (tab?.progLang) this._onActiveLanguageChange.fire({ progLang: tab.progLang, humanLang: this._currentHumanLang });
   }
 
   private _closeTab(id: string): void {
@@ -352,8 +374,9 @@ export class EditorPart extends Part {
 
     const monacoLangId = progLang ? getMonacoLangId(progLang, this._currentHumanLang) : 'plaintext';
     if (progLang) {
-      ensureLanguage(progLang, this._currentHumanLang); // registers hydra-<lang>-es for input
-      ensureLanguage(progLang, 'en');                   // registers <lang> plain TextMate for output
+      ensureLanguage(progLang, this._currentHumanLang).catch(err => console.error('Failed to register input grammar for', progLang, err)); // registers hydra-<lang>-es for input
+      ensureLanguage(progLang, 'en').catch(err => console.error('Failed to register output grammar for', progLang, err));                 // registers <lang> plain TextMate for output
+      registerIntelligence(monacoLangId, progLang, this._currentHumanLang); // completion+hover for input
     }
 
     this._monacoEditor = monaco.editor.create(editorHost, {
@@ -392,11 +415,19 @@ export class EditorPart extends Part {
 
   private _doTranspile(): void {
     if (!this._outputEditor || !this._transpileBtn) return;
+    // Must use the ACTIVE TAB's prog language, not this._currentProgLang (which only
+    // changes when the user manually picks a language from the status bar) — otherwise
+    // opening e.g. a .cpp file transpiles its content as if it were still Java, the
+    // last-selected language from before the file was opened.
+    const progLang = this.getActiveTabProgLang();
     const engine = new TranspilerEngine();
-    const result = engine.transpile({ code: this.getContent(), languageId: this._currentProgLang, humanLanguageId: this._currentHumanLang });
+    const result = engine.transpile({ code: this.getContent(), languageId: progLang, humanLanguageId: this._currentHumanLang });
     this._outputEditor.setValue(result.success ? result.output : `// Transpile error:\n// ${result.error}\n\n${result.output}`);
     this._transpileBtn.style.background = result.success ? 'var(--vscode-button-background)' : 'var(--vscode-errorForeground)';
-    window.dispatchEvent(new CustomEvent('hydracode-transpile', { detail: { success: result.success, mapping: `${this._currentHumanLang.toUpperCase()} → ${this._currentProgLang.toUpperCase()}` } }));
+    window.dispatchEvent(new CustomEvent('hydracode-transpile', { detail: { success: result.success, mapping: `${this._currentHumanLang.toUpperCase()} → ${progLang.toUpperCase()}` } }));
+
+    const model = this._monacoEditor?.getModel();
+    if (model) refreshDiagnostics(model, progLang);
   }
 
   // ── Block canvas (Blockly) ────────────────────────────────────────────────
@@ -431,13 +462,16 @@ export class EditorPart extends Part {
     const workspaceHost = $('div', ['bc-workspace']);
     append(canvas, workspaceHost);
 
-    this._blocklySession.create(workspaceHost);
+    this._blocklySession.create(workspaceHost, this.getActiveTabProgLang(), this._currentHumanLang);
     this._blocklySession.loadBlocks(parsedBlocks);
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
-  private _detectProgLang(filename: string): string {
+  /** Detects a prog language purely from a filename's extension — no disk access, safe
+   *  to call on a name that doesn't exist yet (the New File flow in titlebarPart.ts
+   *  uses this on the user's just-typed name before the file is created). */
+  detectProgLang(filename: string): string {
     const ext = '.' + (filename.split('.').pop()?.toLowerCase() ?? '');
     return getExtToLangMap()[ext]
       // Marketplace-installed languages (e.g. Go, Rust) aren't in the bundled

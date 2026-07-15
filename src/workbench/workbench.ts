@@ -17,6 +17,7 @@ import {
   registerCLanguages,
   registerCppLanguages,
   registerPythonLanguages,
+  registerGoLanguages,
 } from '../languages/index.js';
 
 export class Workbench extends Disposable {
@@ -57,6 +58,7 @@ export class Workbench extends Disposable {
     registerCLanguages();
     registerCppLanguages();
     registerPythonLanguages();
+    registerGoLanguages();
 
     this._extensionRegistry = this._register(new ExtensionRegistry());
 
@@ -116,6 +118,13 @@ export class Workbench extends Disposable {
     // Statusbar ↔ editor language sync
     this._statusbar.onLanguageChange(({ progLang, humanLang }) => {
       this._editor.setLanguage(progLang, humanLang);
+    });
+    // ...and the reverse direction: when the editor discovers a language on its own
+    // (opening a file, switching tabs), push it back into the status bar chip —
+    // otherwise the chip keeps showing whatever it last had (e.g. "Java" at
+    // startup) regardless of what file is actually open.
+    this._editor.onActiveLanguageChange(({ progLang, humanLang }) => {
+      this._statusbar.setLanguage(progLang, humanLang);
     });
 
     // Transpile status display

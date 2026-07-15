@@ -51,5 +51,29 @@ export const cSpanish = new HumanLanguageMapping(
       'falso': 'false',
       'nulo': 'NULL',
     },
+    blockTemplate: {
+      style: 'braces',
+      main: 'entero principal()',
+      // C has no classes — approximated as a struct (fields only).
+      class: 'estructura {NAME}', classTrailingSemicolon: true,
+      method: '{SIGNATURE}',
+      lineComment: '//',
+      ifKeyword: 'si', elseKeyword: 'sino', whileKeyword: 'mientras', forKeyword: 'para', doKeyword: 'hacer',
+      supportsDoWhile: true, forStyle: 'c-style',
+      switchKeyword: 'cambiar', supportsTryCatch: false,
+      print: 'printf({TEXT})', printError: 'fprintf(stderr, {TEXT})',
+      // Real syntax, not a Spanish word — same reasoning as print/printError
+      // themselves: C has no "incluir" vocabulary registered for #include.
+      preamble: {
+        print: ['#include <stdio.h>'],
+        printError: ['#include <stdio.h>'],
+      },
+      varDecl: '{TYPE} {VAR}',
+      // C has no boolean or string type in its own vocabulary — approximate with the
+      // closest real C idiom instead of emitting an untranslatable word.
+      typeOverrides: { cadena: 'caracter*', booleano: 'entero', var: 'entero' },
+      returnKeyword: 'retornar', throwTemplate: null,
+      breakKeyword: 'romper', continueKeyword: 'continuar',
+    },
   },
 );

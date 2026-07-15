@@ -191,3 +191,98 @@
   background: var(--vscode-list-activeSelectionBackground, #094771);
   color: var(--vscode-list-activeSelectionForeground, #fff);
 }
+
+/* New File modal */
+/* Above .menu-dropdown's z-index: 10000 — a real modal dialog must outrank every other
+   overlay in the app, not just the elements it happened to be built near. */
+.new-file-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 20000;
+  -webkit-app-region: no-drag;
+}
+
+.new-file-modal {
+  position: fixed;
+  top: 120px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 420px;
+  background: var(--vscode-menu-background, #252526);
+  border: 1px solid var(--vscode-menu-border, #454545);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  z-index: 20001;
+  display: flex;
+  flex-direction: column;
+  padding: 14px 16px;
+  -webkit-app-region: no-drag;
+}
+
+.new-file-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+  margin-bottom: 10px;
+}
+
+.new-file-input {
+  padding: 8px 10px;
+  background: var(--vscode-input-background, #3c3c3c);
+  border: 1px solid var(--vscode-input-border, #454545);
+  border-radius: 3px;
+  color: var(--vscode-input-foreground, #cccccc);
+  font-size: 13px;
+  outline: none;
+}
+
+.new-file-input:focus {
+  border-color: var(--vscode-focusBorder, #007fd4);
+}
+
+.new-file-error {
+  min-height: 16px;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--vscode-errorForeground, #f14c4c);
+}
+
+.new-file-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.new-file-btn {
+  padding: 5px 14px;
+  font-size: 12px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.new-file-btn-cancel {
+  background: transparent;
+  color: var(--vscode-foreground);
+  border-color: var(--vscode-menu-border, #454545);
+}
+
+.new-file-btn-cancel:hover {
+  background-color: var(--vscode-list-hoverBackground);
+}
+
+.new-file-btn-create {
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #fff);
+}
+
+.new-file-btn-create:hover {
+  background: var(--vscode-button-hoverBackground, #1177bb);
+}
+
+.new-file-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

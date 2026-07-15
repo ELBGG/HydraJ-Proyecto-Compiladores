@@ -91,6 +91,13 @@ export class SidebarPart extends Part {
     return [...this._loadedFiles];
   }
 
+  /** The currently open workspace folder's root path, or null if none is open. Used by
+   *  the New File flow (titlebarPart.ts) to decide whether a new file can be created
+   *  for real on disk, or must fall back to an in-memory-only tab. */
+  getWorkspacePath(): string | null {
+    return this._workspacePath;
+  }
+
   // ── Blocks placeholder ─────────────────────────────────────────────────────
 
   private _renderBlocks(): void {

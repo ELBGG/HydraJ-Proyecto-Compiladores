@@ -108,3 +108,68 @@ Requiere Electron (`npm run electron:dev`) para las partes marcadas 🖥️; el 
 - Rust/Ruby/PHP no se pudieron probar en esta máquina (toolchains no instalados) — el código está ahí con manejo de error si el compilador/intérprete no se encuentra.
 - El "Run" en terminal para C/C++ no tiene botón de "Detener" propio ni timeout automático — es una sesión de shell normal (Ctrl+C para interrumpir).
 - No hay debugging real (breakpoints, variables, call stack) — fue una decisión de alcance explícita durante la sesión, dado que HydraCode transpila y corre el resultado en vez de depurar el código fuente paso a paso.
+
+---
+
+# Sesión 2 — LSP-lite, editor visual genérico, lenguaje Go, y arreglos post-lanzamiento
+
+Continuación de la sesión anterior. Todo verificado con `npx tsc --noEmit`, `npx eslint .`, `npx vitest run` (78/78) y `npm run build` en verde.
+
+## 9. Autocompletado, hover y diagnósticos en vivo (LSP-lite)
+
+- **No es un Language Server real** (no hay clangd/jdtls/pyright corriendo) — es autocompletado/hover que lee directamente el vocabulario de `LanguageRegistry`, así que funciona automáticamente para cualquier mapping, incluidos los que el usuario cree.
+- `languageIntelligence.ts`: `registerCompletionItemProvider`/`registerHoverProvider` de Monaco, sugiriendo cada palabra del mapping activo con su traducción.
+- `syntaxDiagnostics.ts`: chequeo estructural sin parser real — balance de llaves/paréntesis/corchetes y strings/comentarios sin cerrar — como subrayados de Monaco.
+- `codeScanner.ts`: extraído de `TranspilerEngine` para compartir la misma lógica de "qué es código vs. qué es texto literal" entre el transpilador y los diagnósticos.
+
+## 10. Editor visual (Blockly) completado y ahora genérico
+
+- **Antes**: 4 generadores de código escritos a mano, uno por lenguaje (`java.ts`, `c.ts`, `cpp.ts`, `python.ts`), con un fallback silencioso a Java para cualquier lenguaje sin generador propio.
+- **Ahora**: un único motor (`genericGenerator.ts`) que lee el campo `blockTemplate` de cada mapping y genera el código de cualquier lenguaje a partir de esos datos — añadir un lenguaje nuevo al editor visual ya no requiere escribir un generador aparte.
+- Si un mapping no tiene `blockTemplate`, el modo Bloques se deshabilita explícitamente con un aviso — nunca genera silenciosamente el código de otro lenguaje.
+- Bloques `romper`/`continuar` pasaron a ser tipos dedicados (antes eran texto genérico sin significado propio).
+- El esquema de `blockTemplate` (`IBlockCodeTemplate` en `types.ts`) creció con: `forStyle: 'go-style'` (bucles `for` de Go, sin paréntesis y con declaración corta `:=`), `statementTerminator` (idioma con llaves pero sin `;` obligatorio), `filePrefix` (línea que debe ir antes que cualquier `import`, como `package main` de Go), `preamble` (imports condicionados a que el bloque que los necesita se haya usado de verdad — nunca un import "porque sí", que en Go es error de compilación), y `mainRequiresClass` (Java: un método nunca puede existir fuera de una clase).
+
+## 11. Go como lenguaje nuevo — prueba real de que el sistema es genérico
+
+- Mapping completo (`src/languages/go/GoSpanish.ts`) con las 25 palabras reservadas de Go en español.
+- Añadirlo expuso **dos listas hardcodeadas más** que lo excluían silenciosamente, más allá de los generadores de Blockly: `SPANISH_LANGS` en `monacoLanguage.ts` (decidía si un lenguaje usaba el id de Monaco con inyección de español) y `SPANISH_BASE_SCOPES` en `grammarRegistry.ts` (decidía qué lenguajes recibían la gramática TextMate de inyección). Las dos ahora se derivan de `LanguageRegistry` en vez de una lista fija.
+
+## 12. `LANGUAGE_MAPPINGS.md` — guía para crear mappings nuevos
+
+Documento nuevo en la raíz del repo (no en `docs/`, que está en `.gitignore`) explicando campo por campo cómo crear un mapping de idioma nuevo — vocabulario y `blockTemplate` — usando Go como ejemplo trabajado de principio a fin.
+
+## 13. "Nuevo archivo" con plantilla real, no un buffer vacío
+
+- Ctrl+N / File → New File ahora abre una miniventana pidiendo nombre **con extensión** (p. ej. `test.cpp`), en vez de crear directamente un buffer "Untitled-N" vacío en memoria.
+- El lenguaje se detecta de la extensión y el editor se pre-llena con un "Hola Mundo" en español, generado con las mismas plantillas (`fileTemplate.ts`, reutiliza `blockTemplate`) que usa el editor visual — ningún archivo de plantilla nuevo por lenguaje.
+- Si hay una carpeta abierta (Explorer → Abrir Carpeta), el archivo se crea de verdad en disco dentro de esa carpeta, con un IPC nuevo (`folder:create-file`, escritura atómica con flag `wx` — nunca sobrescribe un archivo existente, muestra el error en la misma miniventana). Si no hay carpeta abierta, cae de vuelta a una pestaña en memoria (como antes), pero ya con nombre y plantilla correctos.
+
+## 14. Bugs encontrados y corregidos en esta sesión
+
+- **Crash de memoria agotada al abrir cualquier archivo** (`.java`, `.c`, `.cpp`, `.py`) — introducido por mí mismo al quitar la lista hardcodeada de gramáticas con inyección de español: la gramática de inyección terminaba inyectándose recursivamente sobre su propia salida sin parar nunca (`source.cpp.es-injection` → `....es-injection.es-injection` → ...), agotando la memoria del proceso en vez de fallar rápido. Corregido con un guard explícito en `grammarRegistry.ts` + test de regresión dedicado.
+- **El transpilador usaba el lenguaje equivocado al abrir un archivo** — `_doTranspile()` leía un campo global (`_currentProgLang`, solo se actualizaba si tocabas el selector de la barra de estado a mano) en vez del lenguaje real de la pestaña activa. Abrir un `.cpp` transpilaba su contenido como si fuera Java.
+- **El chip de idioma de la barra de estado no se sincronizaba** al abrir un archivo o cambiar de pestaña — seguía mostrando "Java" aunque tuvieras un `.cpp` abierto. Nuevo evento (`EditorPart.onActiveLanguageChange`) lo mantiene sincronizado.
+- **STT (voz a texto) roto**: `vosk-browser` es un bundle UMD sin declaraciones `export` de verdad. Según el entorno (servidor de desarrollo de Vite vs. build de producción con Rollup) la función real `createModel` termina expuesta de tres formas distintas (directo en el módulo, bajo `.default`, o como variable global `window.Vosk`). Ahora se revisan las tres en orden en vez de asumir una.
+- **La miniventana de "Nuevo archivo" no aceptaba texto la segunda vez que se abría**: su z-index (2001) era menor al de los menús desplegables (10000), y Monaco retiene el foco del teclado una vez que se crea el primer editor de la sesión. Arreglado subiendo el z-index del modal muy por encima de cualquier otro overlay y forzando un `blur()` explícito + `focus()` diferido a la siguiente animation frame antes de enfocar el campo de texto.
+
+## 15. Cómo probar (sesión 2)
+
+| Área | Cómo probarlo |
+|---|---|
+| Autocompletado/hover | Escribe código en cualquier lenguaje instalado — al teclear debe sugerir palabras del mapping activo con su traducción; al pasar el mouse sobre una palabra clave debe mostrar a qué se transpila. |
+| Diagnósticos en vivo | Escribe un `{` o `(` sin cerrar — debe aparecer un subrayado rojo en esa línea. |
+| Modo Bloques con Go 🖥️ | Instala Go desde Extensiones, abre/crea un `.go`, entra a modo Bloques, arma un programa con un bloque de imprimir, genera código — debe traer `paquete principal`, `importar "fmt"` y `func main()` ya transpilados. |
+| Modo Bloques deshabilitado con gracia | Prueba modo Bloques en un lenguaje sin mapping (p. ej. Rust recién instalado) — debe mostrar un aviso claro, no generar código de otro lenguaje. |
+| Nuevo archivo con carpeta abierta 🖥️ | Abre una carpeta, Ctrl+N, escribe `test.cpp` — debe crear el archivo de verdad en esa carpeta con la plantilla de C++ (incluye `#include <iostream>` y `using namespace std;`). Repite para crear un segundo archivo inmediatamente después — la miniventana debe aceptar texto normalmente. |
+| Nuevo archivo sin carpeta abierta | Sin carpeta abierta, Ctrl+N, escribe `hola.py` — debe abrir una pestaña con la plantilla de Python, sin guardar en disco hasta que uses Guardar. |
+| Nombre de archivo duplicado | Con una carpeta abierta, intenta crear un archivo con un nombre que ya existe — debe mostrar el error dentro de la misma miniventana, sin cerrarla. |
+| STT (voz a texto) 🖥️ | Panel STT → descarga/carga un modelo → Grabar — debe transcribir lo que dices sin error en consola. |
+| Transpile del lenguaje correcto 🖥️ | Abre un `.cpp` y uno `.py` en pestañas distintas — el panel de salida y el chip de la barra de estado deben reflejar siempre el lenguaje de la pestaña activa, no el último seleccionado manualmente. |
+
+## 16. Limitaciones conocidas (sesión 2)
+
+- `preamble` (imports automáticos del editor visual) solo cubre los bloques de imprimir por ahora — no genera imports para tipos ni para excepciones. Ver `LANGUAGE_MAPPINGS.md`.
+- El modo Bloques no valida qué bloques son válidos dentro de cuáles — anidar un método dentro de una clase en C/Go (que se aproximan a `struct`, sin métodos reales) produce texto que no compila.
+- `switch`/`case` en el editor visual solo genera el contenedor — las etiquetas `caso`/`predeterminado` no tienen bloques dedicados.
+- El resaltado de sintaxis con palabras en español para Go específicamente todavía no está activo (no hay una gramática TextMate real de Go empaquetada en `extensions/`) — el autocompletado, hover y transpilación si funcionan igual, ya que no dependen de esa gramática.

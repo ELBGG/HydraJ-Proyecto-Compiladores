@@ -114,5 +114,22 @@ export const javaSpanish = new HumanLanguageMapping(
       { from: /\bmatematicas\.piso\.\(([^)]+)\)/g, to: 'Math.floor($1)' },
       { from: /\bmatematicas\.techo\.\(([^)]+)\)/g, to: 'Math.ceil($1)' },
     ],
+    blockTemplate: {
+      style: 'braces',
+      main: 'publico estatico vacio principal(cadena[] argumentos)',
+      // Unlike C/C++/Go/Python, a Java method can never exist outside a class at all —
+      // a free-standing main() is not just unidiomatic, it's a syntax error.
+      mainRequiresClass: true,
+      class: 'clase {NAME}',
+      method: '{SIGNATURE}',
+      lineComment: '//',
+      ifKeyword: 'si', elseKeyword: 'sino', whileKeyword: 'mientras', forKeyword: 'para', doKeyword: 'hacer',
+      supportsDoWhile: true, forStyle: 'c-style',
+      switchKeyword: 'cambiar', supportsTryCatch: true, tryKeyword: 'intentar', catchKeyword: 'capturar',
+      print: 'sistema.imprimir({TEXT})', printError: 'sistema.imprimir_error({TEXT})',
+      varDecl: '{TYPE} {VAR}',
+      returnKeyword: 'retornar', throwTemplate: 'lanzar nuevo {EXC}',
+      breakKeyword: 'romper', continueKeyword: 'continuar',
+    },
   },
 );
