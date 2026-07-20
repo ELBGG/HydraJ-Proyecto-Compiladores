@@ -44,7 +44,6 @@ interface ElectronExtensionOps {
   save(extensions: unknown[]):                       Promise<{ success: boolean; error?: string }>;
   load():                                            Promise<{ success: boolean; extensions: unknown[]; error?: string }>;
   queryMarketplace(text: string):                     Promise<{ success: boolean; extensions: unknown[]; error?: string }>;
-  readExampleMapping(filename: string):               Promise<{ success: true; content: string } | { success: false; error: string }>;
 }
 
 interface ElectronDialogOps {
@@ -53,6 +52,77 @@ interface ElectronDialogOps {
 
 interface ElectronAppOps {
   about():                                           Promise<void>;
+}
+
+/** Flat, dot-namespaced settings blob (e.g. { "editor.fontSize": 13, "ai.apiKey": "..." })
+ *  — mirrors settingsRegistry.ts's SettingDefinition.id keys and VS Code's own
+ *  settings.json shape. Kept as an index signature here (not a fixed interface) since
+ *  the renderer-side schema (src/workbench/parts/sidebar/settingsRegistry.ts) is the
+ *  actual source of truth for which keys exist; this file only needs to describe what
+ *  the IPC boundary carries. */
+interface HydraSettingsValues {
+  [settingId: string]: string | number | boolean;
+}
+
+interface ElectronSettingsOps {
+  save(values: HydraSettingsValues):                 Promise<{ success: boolean; error?: string }>;
+  load():                                            Promise<{ success: boolean; values: HydraSettingsValues | null }>;
+}
+
+/** The AI interpreter's chat-completion request, proxied through the main process
+ *  instead of a renderer fetch() — see main.cjs's 'ai:stream-start' handler for why
+ *  (CORS on external APIs when called directly from a contextIsolation'd renderer;
+ *  Node's fetch in main isn't subject to it) and for why it streams (perceived latency
+ *  on a large model over a free-tier endpoint). `body` must set stream:true. */
+interface AIChatCompletionRequest {
+  url: string;
+  apiKey: string;
+  /** Pre-serialized JSON request body (aiInterpreter.ts already does JSON.stringify). */
+  body: string;
+}
+
+interface AIStreamChatCompletionResult {
+  ok: boolean;
+  status: number;
+  statusText: string;
+  /** Full accumulated text (every onChunk delta concatenated) — only set when ok. */
+  content?: string;
+  /** Raw error response body — only set when !ok and a real HTTP response came back. */
+  bodyText?: string;
+  /** Set instead when the request never reached the network (DNS failure, connection
+   *  refused, etc.) — ok is false and status is 0 in this case. */
+  networkError?: string;
+}
+
+interface ElectronAIOps {
+  /** Resolves once the stream ends, but `onChunk` fires synchronously for every delta
+   *  as it arrives — callers should render each delta immediately rather than wait for
+   *  the returned promise if they want a live "typing" effect. */
+  streamChatCompletion(req: AIChatCompletionRequest, onChunk: (delta: string) => void): Promise<AIStreamChatCompletionResult>;
+}
+
+/** Local disk cache for a mapping fetched from a GitHub repo — mirrors ElectronModelOps'
+ *  shape (raw content in, raw content out; the renderer owns parsing/validation via
+ *  parseMappingFile()). Keyed by languageId, one JSON file each under
+ *  userData/mappings/ — see githubMappingService.ts for why this exists (offline
+ *  resilience: the last successfully-fetched mapping keeps working with no network). */
+interface ElectronMappingOps {
+  saveCache(languageId: string, json: string): Promise<{ success: boolean; error?: string }>;
+  loadCache(languageId: string):                Promise<{ success: boolean; json: string | null }>;
+}
+
+/** {languageId, repoUrl} pairs — kept as a loose index signature the same way
+ *  HydraSettingsValues is, since mappingSourceStore.ts (the actual source of truth for
+ *  the shape) is renderer-side, not this IPC-boundary type file. */
+interface HydraMappingSource {
+  languageId: string;
+  humanLangId: string;
+  repoUrl: string;
+}
+
+interface ElectronMappingSourceOps {
+  save(sources: HydraMappingSource[]): Promise<{ success: boolean; error?: string }>;
+  load():                              Promise<{ success: boolean; sources: HydraMappingSource[] | null }>;
 }
 
 interface ElectronTerminalOps {
@@ -76,6 +146,10 @@ interface ElectronAPI {
   dialogOps:     ElectronDialogOps;
   appOps:        ElectronAppOps;
   terminalOps:   ElectronTerminalOps;
+  settingsOps:   ElectronSettingsOps;
+  aiOps:         ElectronAIOps;
+  mappingOps:    ElectronMappingOps;
+  mappingSourceOps: ElectronMappingSourceOps;
 }
 
 interface Window {

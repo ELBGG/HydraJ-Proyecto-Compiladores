@@ -4,7 +4,7 @@ import { $, append } from '../../../base/browser/dom.js';
 import { Emitter } from '../../../base/common/event.js';
 import {
   iconExplorer, iconSearch, iconBlocks, iconMic,
-  iconBranch, iconPlay, iconExtensions, iconPerson, iconGear,
+  iconBranch, iconPlay, iconExtensions, iconMappings, iconPerson, iconGear,
   createIconElement,
 } from '../../../base/browser/icons.js';
 
@@ -24,6 +24,7 @@ export class ActivitybarPart extends Part {
     { id: 'source-control', icon: 'branch',         label: 'Source Control' },
     { id: 'debug',          icon: 'play',           label: 'Run and Debug' },
     { id: 'extensions',     icon: 'extensions',     label: 'Extensions' },
+    { id: 'mappings',       icon: 'mappings',       label: 'Mappings' },
   ];
 
   private _bottomItems: ActivityBarItem[] = [
@@ -57,7 +58,7 @@ export class ActivitybarPart extends Part {
 
   private _iconFns: Record<string, () => string> = {
     explorer: iconExplorer, search: iconSearch, blocks: iconBlocks, mic: iconMic,
-    branch: iconBranch, play: iconPlay, extensions: iconExtensions,
+    branch: iconBranch, play: iconPlay, extensions: iconExtensions, mappings: iconMappings,
     person: iconPerson, gear: iconGear,
   };
 

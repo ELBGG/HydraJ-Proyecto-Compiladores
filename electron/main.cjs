@@ -41,6 +41,19 @@ function createWindow() {
     console.log(`[renderer:${levelName}] ${message} (${sourceId}:${line})`);
   });
 
+  // Chromium's own hang detector — catches "still alive but not responding to input"
+  // (e.g. a stuck Web Worker feeding heavy synchronous work back into the main thread),
+  // a state render-process-gone above does NOT cover since the process never dies.
+  // Diagnostically decisive on its own: if this does NOT fire during a reported freeze,
+  // that proves the main thread itself is fine and the stall is isolated elsewhere
+  // (e.g. inside a Worker), not a general main-thread block.
+  win.webContents.on('unresponsive', () => {
+    console.error('[HydraCode] Renderer became unresponsive (window may appear frozen).');
+  });
+  win.webContents.on('responsive', () => {
+    console.log('[HydraCode] Renderer recovered from being unresponsive.');
+  });
+
   if (isDev) {
     win.loadURL('http://localhost:5173');
     win.webContents.openDevTools();
@@ -241,6 +254,213 @@ ipcMain.handle('model:download', async (event, { id, url }) => {
   }
 });
 
+// ── User settings ─────────────────────────────────────────────────────────────
+// One flat JSON object (dot-namespaced keys, e.g. "editor.fontSize") at userData/
+// settings.json — mirrors VS Code's own settings.json shape. Stored locally per-machine,
+// never bundled/shared: this is also where the AI interpreter's API key lives, and each
+// user brings their own (NVIDIA's free tier or any other OpenAI-compatible provider).
+// Previously this was a dedicated ai-settings.json — generalized into one store the
+// moment a second kind of setting needed persisting, before any real users existed to
+// migrate, so there was no reason to keep the two around side by side.
+ipcMain.handle('settings:save', async (_event, values) => {
+  try {
+    const settingsPath = path.join(app.getPath('userData'), 'settings.json');
+    await fs.promises.writeFile(settingsPath, JSON.stringify(values), 'utf-8');
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+});
+
+ipcMain.handle('settings:load', async () => {
+  try {
+    const settingsPath = path.join(app.getPath('userData'), 'settings.json');
+    const raw = await fs.promises.readFile(settingsPath, 'utf-8');
+    return { success: true, values: JSON.parse(raw) };
+  } catch {
+    return { success: false, values: null };
+  }
+});
+
+// ── Write serialization + atomic writes ──────────────────────────────────────
+// Two independent renderer calls can target the exact same file — e.g. startup's
+// loadAndRegisterAllMappings() caching "python" at the same moment a user installs a
+// different repo that also declares languageId "python" via the GitHub-mapping panel.
+// Plain concurrent fs.promises.writeFile calls have no ordering guarantee (whichever
+// I/O happens to finish last wins, not whichever call was dispatched last) — queueWrite
+// chains every write for the same path onto the previous one. writeFileAtomic writes to
+// a temp file and renames over the real path so a crash/kill/full-disk mid-write can
+// never leave a truncated-but-still-readable file behind (found by this session's
+// adversarial review of the mapping-loading feature).
+const _writeQueues = new Map();
+
+function queueWrite(filePath, fn) {
+  const prev = _writeQueues.get(filePath) ?? Promise.resolve();
+  const next = prev.then(fn, fn);
+  _writeQueues.set(filePath, next.catch(() => {}));
+  return next;
+}
+
+async function writeFileAtomic(filePath, content) {
+  const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  await fs.promises.writeFile(tmpPath, content, 'utf-8');
+  await fs.promises.rename(tmpPath, filePath);
+}
+
+// ── Language mapping cache ───────────────────────────────────────────────────
+// Mirrors the Vosk model cache's shape (see modelOps below): mappings fetched from a
+// GitHub repo (see githubMappingService.ts) are cached here as raw JSON text so the app
+// still has a last-known-good mapping to register on a launch with no network access,
+// rather than a language silently having zero vocabulary. languageId comes from
+// user-editable state (whatever a user types when adding a mapping source from the UI),
+// so it's allowlisted before ever touching a filesystem path — never trust it as-is.
+function sanitizeMappingLanguageId(languageId) {
+  return String(languageId).replace(/[^a-zA-Z0-9_-]/g, '');
+}
+
+ipcMain.handle('mappings:save-cache', async (_event, { languageId, json }) => {
+  try {
+    const safeId = sanitizeMappingLanguageId(languageId);
+    if (!safeId) return { success: false, error: 'languageId inválido' };
+    const dir = path.join(app.getPath('userData'), 'mappings');
+    await fs.promises.mkdir(dir, { recursive: true });
+    const cachePath = path.join(dir, `${safeId}.json`);
+    await queueWrite(cachePath, () => writeFileAtomic(cachePath, json));
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+});
+
+ipcMain.handle('mappings:load-cache', async (_event, languageId) => {
+  const safeId = sanitizeMappingLanguageId(languageId);
+  if (!safeId) return { success: false, json: null };
+
+  // Validates JSON.parse, not just the read itself — a corrupt-but-readable cache file
+  // (e.g. left behind by a crash mid-write before writeFileAtomic existed, or a disk
+  // that filled up) must fall through to the seed the same way a missing file does,
+  // instead of permanently shadowing a perfectly good seed with unusable data.
+  const tryRead = async (filePath) => {
+    const json = await fs.promises.readFile(filePath, 'utf-8');
+    JSON.parse(json);
+    return json;
+  };
+
+  const cachePath = path.join(app.getPath('userData'), 'mappings', `${safeId}.json`);
+  try {
+    return { success: true, json: await tryRead(cachePath) };
+  } catch {
+    // No real cache yet, or it exists but is corrupt/truncated — fall back to the seed
+    // shipped with the app itself, generated from the mappings that used to be this
+    // app's only source of truth (see mappingSourceStore.ts). Keeps java/c/cpp/python
+    // fully working offline from the very first launch, before their GitHub repos even
+    // exist yet in some cases, without reintroducing a hardcoded/statically-imported
+    // mapping anywhere in the renderer.
+    try {
+      const seedPath = path.join(__dirname, 'mapping-seeds', `${safeId}.json`);
+      return { success: true, json: await tryRead(seedPath) };
+    } catch {
+      return { success: false, json: null };
+    }
+  }
+});
+
+// The list of {languageId, repoUrl} mapping sources the app registers on startup (see
+// mappingSourceStore.ts) — separate from settings.json since it's a list, not a flat
+// scalar blob, but otherwise the exact same save/load shape.
+ipcMain.handle('mapping-sources:save', async (_event, sources) => {
+  try {
+    const sourcesPath = path.join(app.getPath('userData'), 'mapping-sources.json');
+    await queueWrite(sourcesPath, () => writeFileAtomic(sourcesPath, JSON.stringify(sources)));
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+});
+
+ipcMain.handle('mapping-sources:load', async () => {
+  try {
+    const sourcesPath = path.join(app.getPath('userData'), 'mapping-sources.json');
+    const raw = await fs.promises.readFile(sourcesPath, 'utf-8');
+    return { success: true, sources: JSON.parse(raw) };
+  } catch {
+    return { success: false, sources: null };
+  }
+});
+
+// ── AI interpreter network proxy ─────────────────────────────────────────────
+// The renderer used to call the configured OpenAI-compatible endpoint directly with
+// fetch() — that's a normal, security-conscious Chromium context (contextIsolation +
+// webSecurity, both on), so it's subject to CORS like any browser tab. Providers meant
+// for server-side consumption (NVIDIA's NIM catalog included) don't send an
+// Access-Control-Allow-Origin header, so the preflight gets blocked and the request
+// never even reaches the network tab — confirmed live: "blocked by CORS policy: ...
+// No 'Access-Control-Allow-Origin' header is present". Node's fetch in the MAIN
+// process isn't a browser fetch at all — CORS is a browser-enforced concept with
+// nothing to enforce it here — so proxying the one HTTP call through IPC sidesteps
+// the problem entirely without touching webSecurity (which would weaken every other
+// request the app makes, not just this one).
+// Event-based (not invoke/handle) because this streams: the request body sets
+// stream:true and the provider responds with an SSE body ("data: {...}\n\n" frames) —
+// each parsed delta is forwarded to the renderer immediately as an 'ai:stream-event'
+// 'chunk' so the user sees text appear as the model generates it, instead of silently
+// waiting for the full completion (a 70B-class model's full response over a free-tier
+// endpoint can take long enough that a non-streaming wait reads as "broken"). The
+// renderer keys events by requestId since a user could in principle trigger overlapping
+// interpret() calls.
+ipcMain.on('ai:stream-start', async (event, { requestId, url, apiKey, body }) => {
+  const send = (payload) => { try { event.sender.send('ai:stream-event', { requestId, ...payload }); } catch { /* window may already be gone */ } };
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body,
+    });
+
+    if (!res.ok) {
+      const bodyText = await res.text().catch(() => '');
+      send({ type: 'done', ok: false, status: res.status, statusText: res.statusText, bodyText });
+      return;
+    }
+    if (!res.body) {
+      send({ type: 'done', ok: false, status: res.status, statusText: res.statusText, bodyText: 'La respuesta no incluyó un cuerpo.' });
+      return;
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+    let content = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+      for (const rawLine of lines) {
+        const line = rawLine.trim();
+        if (!line.startsWith('data:')) continue;
+        const data = line.slice(5).trim();
+        if (!data || data === '[DONE]') continue;
+        try {
+          const json = JSON.parse(data);
+          const delta = json?.choices?.[0]?.delta?.content;
+          if (typeof delta === 'string' && delta) {
+            content += delta;
+            send({ type: 'chunk', delta });
+          }
+        } catch { /* ignore a malformed/partial SSE frame */ }
+      }
+    }
+    send({ type: 'done', ok: true, status: res.status, statusText: res.statusText, content });
+  } catch (err) {
+    send({ type: 'done', ok: false, status: 0, statusText: 'network-error', networkError: String(err && err.message ? err.message : err) });
+  }
+});
+
 ipcMain.handle('app:about', async () => {
   await dialog.showMessageBox(win, {
     type: 'info',
@@ -272,6 +492,19 @@ ipcMain.handle('run:execute', async (event, { code, language, debug }) => {
   const { spawn } = require('child_process');
   const os = require('os');
 
+  // Configuración → Ejecución → "Tiempo límite de ejecución" (run.timeoutMs) — read fresh
+  // on every run rather than cached, so a change in Settings takes effect on the next
+  // run without restarting the app. Falls back to 30s if unset/unreadable.
+  let configuredTimeoutMs = 30000;
+  try {
+    const settingsPath = path.join(app.getPath('userData'), 'settings.json');
+    const raw = await fs.promises.readFile(settingsPath, 'utf-8');
+    const values = JSON.parse(raw);
+    if (typeof values['run.timeoutMs'] === 'number' && values['run.timeoutMs'] > 0) {
+      configuredTimeoutMs = values['run.timeoutMs'];
+    }
+  } catch { /* settings.json missing or unreadable — keep the 30s default */ }
+
   if (_runningProcess) {
     try { _runningProcess.kill(); } catch {}
     _runningProcess = null;
@@ -292,13 +525,13 @@ ipcMain.handle('run:execute', async (event, { code, language, debug }) => {
   // Tracks `proc` as the single module-level "running process" so run:stop
   // can kill it and so it's bounded by a timeout, regardless of whether
   // `proc` is a compiler (javac/gcc/g++) or the actual execution step.
-  const execWithTimeout = (proc, timeoutMs = 30000, onError) => new Promise((resolve) => {
+  const execWithTimeout = (proc, timeoutMs = configuredTimeoutMs, onError) => new Promise((resolve) => {
     _runningProcess = proc;
     const timer = setTimeout(() => {
       if (_runningProcess === proc) {
         try { proc.kill(); } catch {}
         _runningProcess = null;
-        send('\n[Tiempo de ejecución excedido (30s)]\n', 'info');
+        send(`\n[Tiempo de ejecución excedido (${Math.round(timeoutMs / 1000)}s)]\n`, 'info');
         resolve(1);
       }
     }, timeoutMs);
@@ -326,7 +559,7 @@ ipcMain.handle('run:execute', async (event, { code, language, debug }) => {
       send(`Compilando ${className}.java...\n`, 'info');
       const compileProc = spawn('javac', javacArgs, { cwd: runDir });
       attachOutput(compileProc);
-      const compiled = await execWithTimeout(compileProc, 30000, () => {
+      const compiled = await execWithTimeout(compileProc, configuredTimeoutMs, () => {
         send(`\nError: javac no encontrado. Asegúrate de tener JDK instalado.\n`, 'stderr');
       });
 
@@ -366,7 +599,7 @@ ipcMain.handle('run:execute', async (event, { code, language, debug }) => {
       send(`Compilando con ${compiler} (WSL)...\n`, 'info');
       const compileProc = spawn('wsl.exe', [compiler, ...(debug ? ['-g'] : []), '-o', 'main', `main.${ext}`], { cwd: runDir, windowsHide: true, shell: false });
       attachOutput(compileProc);
-      const compiled = await execWithTimeout(compileProc, 30000, () => {
+      const compiled = await execWithTimeout(compileProc, configuredTimeoutMs, () => {
         send('\nError al ejecutar WSL. Verifica que WSL esté correctamente instalado y tenga gcc/g++.\n', 'stderr');
       });
 
@@ -384,7 +617,7 @@ ipcMain.handle('run:execute', async (event, { code, language, debug }) => {
       send('Ejecutando con Node.js...\n\n', 'info');
       const proc = spawn('node', [filePath], { cwd: runDir });
       attachOutput(proc);
-      return { exitCode: await execWithTimeout(proc, 30000, () => {
+      return { exitCode: await execWithTimeout(proc, configuredTimeoutMs, () => {
         send('\nError: Node.js no encontrado.\n', 'stderr');
       }) };
     }
@@ -397,7 +630,7 @@ ipcMain.handle('run:execute', async (event, { code, language, debug }) => {
       send('Ejecutando con Node.js (soporte nativo de TypeScript)...\n\n', 'info');
       const proc = spawn('node', [filePath], { cwd: runDir });
       attachOutput(proc);
-      return { exitCode: await execWithTimeout(proc, 30000, () => {
+      return { exitCode: await execWithTimeout(proc, configuredTimeoutMs, () => {
         send('\nError: Node.js no encontrado, o tu versión no soporta TypeScript nativo (requiere Node 22.6+).\n', 'stderr');
       }) };
     }
@@ -410,7 +643,7 @@ ipcMain.handle('run:execute', async (event, { code, language, debug }) => {
       send('Compilando y ejecutando con go run...\n\n', 'info');
       const proc = spawn('go', ['run', filePath], { cwd: runDir });
       attachOutput(proc);
-      return { exitCode: await execWithTimeout(proc, 30000, () => {
+      return { exitCode: await execWithTimeout(proc, configuredTimeoutMs, () => {
         send('\nError: Go no encontrado. Instálalo desde https://go.dev/dl/\n', 'stderr');
       }) };
     }
@@ -424,7 +657,7 @@ ipcMain.handle('run:execute', async (event, { code, language, debug }) => {
       send('Compilando con rustc...\n', 'info');
       const compileProc = spawn('rustc', [filePath, '-o', outPath], { cwd: runDir });
       attachOutput(compileProc);
-      const compiled = await execWithTimeout(compileProc, 30000, () => {
+      const compiled = await execWithTimeout(compileProc, configuredTimeoutMs, () => {
         send('\nError: rustc no encontrado. Instala Rust desde https://www.rust-lang.org/tools/install\n', 'stderr');
       });
       if (compiled !== 0) return { exitCode: compiled };
@@ -443,7 +676,7 @@ ipcMain.handle('run:execute', async (event, { code, language, debug }) => {
       send('Ejecutando con Ruby...\n\n', 'info');
       const proc = spawn('ruby', [filePath], { cwd: runDir });
       attachOutput(proc);
-      return { exitCode: await execWithTimeout(proc, 30000, () => {
+      return { exitCode: await execWithTimeout(proc, configuredTimeoutMs, () => {
         send('\nError: Ruby no encontrado. Instálalo desde https://www.ruby-lang.org/\n', 'stderr');
       }) };
     }
@@ -456,7 +689,7 @@ ipcMain.handle('run:execute', async (event, { code, language, debug }) => {
       send('Ejecutando con PHP...\n\n', 'info');
       const proc = spawn('php', [filePath], { cwd: runDir });
       attachOutput(proc);
-      return { exitCode: await execWithTimeout(proc, 30000, () => {
+      return { exitCode: await execWithTimeout(proc, configuredTimeoutMs, () => {
         send('\nError: PHP no encontrado. Instálalo desde https://www.php.net/\n', 'stderr');
       }) };
     }
@@ -566,19 +799,6 @@ ipcMain.handle('terminal:kill', (_event, { id }) => {
   const term = _terminals.get(id);
   if (!term) return { success: false };
   try { term.kill(); _terminals.delete(id); return { success: true }; } catch { return { success: false }; }
-});
-
-// ── Example mappings ──────────────────────────────────────────────────────────
-ipcMain.handle('extensions:read-example-mapping', async (_event, { filename }) => {
-  try {
-    const mappingsDir = path.join(__dirname, '..', 'examples', 'mappings');
-    const filePath = safeChildPath(mappingsDir, filename);
-    if (!filePath) return { success: false, error: 'Invalid filename' };
-    const content = await fs.promises.readFile(filePath, 'utf-8');
-    return { success: true, content };
-  } catch (err) {
-    return { success: false, error: String(err) };
-  }
 });
 
 // ── Extension marketplace ────────────────────────────────────────────────────

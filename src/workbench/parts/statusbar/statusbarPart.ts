@@ -4,16 +4,18 @@ import { $, append, clearNode } from '../../../base/browser/dom.js';
 import { LanguageRegistry } from '../../../languages/index.js';
 import { Emitter } from '../../../base/common/event.js';
 import { iconGlobe, iconBranch, iconPencil, createIconElement } from '../../../base/browser/icons.js';
+import { settingsStore } from '../sidebar/settingsStore.js';
 
 export class StatusbarPart extends Part {
   private _progLangEl!: HTMLElement;
   private _humanLangEl!: HTMLElement;
   private _transpileStatusEl!: HTMLElement;
   private _langPickerOverlay: HTMLElement | null = null;
+  private _humanLangPickerOverlay: HTMLElement | null = null;
 
   private _progLangs: string[] = ['java'];
-  private _currentProgLang = 'java';
-  private _currentHumanLang = 'es';
+  private _currentProgLang = settingsStore.get<string>('workbench.defaultProgLanguage', 'java');
+  private _currentHumanLang = settingsStore.get<string>('workbench.humanLanguage', 'es');
 
   private static readonly _DISPLAY_NAMES: Record<string, string> = {
     java: 'Java', c: 'C', cpp: 'C++', python: 'Python',
@@ -28,6 +30,23 @@ export class StatusbarPart extends Part {
 
   constructor() {
     super('statusbar', { hasTitle: false, minimumHeight: 22 });
+    if (!this._progLangs.includes(this._currentProgLang)) this._progLangs.push(this._currentProgLang);
+
+    this._register(settingsStore.onChange(({ id, value }) => {
+      if (id === 'workbench.humanLanguage') {
+        // A legitimate live global switch — same effect as the user manually cycling
+        // the human-language chip, so it re-tokenizes/re-transpiles whatever's open.
+        this._currentHumanLang = String(value);
+        this._updateLanguageDisplay();
+        this._onLanguageChange.fire({ progLang: this._currentProgLang, humanLang: this._currentHumanLang });
+      } else if (id === 'workbench.defaultProgLanguage') {
+        // Only affects new/blank tabs going forward (see editorPart.ts) — deliberately
+        // does NOT touch _currentProgLang or fire onLanguageChange here, which would
+        // desync the chip from whatever file is actually open. Just make sure the new
+        // default shows up as an option in the language picker.
+        if (!this._progLangs.includes(String(value))) this._progLangs.push(String(value));
+      }
+    }));
   }
 
   get currentProgLang(): string { return this._currentProgLang; }
@@ -84,9 +103,9 @@ export class StatusbarPart extends Part {
     this._progLangEl.addEventListener('click', (e) => { e.stopPropagation(); this._showLangPicker(); });
 
     this._humanLangEl = $('div', ['statusbar-item']);
-    this._humanLangEl.title = 'Click to change human language';
+    this._humanLangEl.title = 'Seleccionar idioma humano';
     append(left, this._humanLangEl);
-    this._humanLangEl.addEventListener('click', () => this._cycleHumanLang());
+    this._humanLangEl.addEventListener('click', (e) => { e.stopPropagation(); this._showHumanLangPicker(); });
 
     append(container, left);
 
@@ -128,16 +147,21 @@ export class StatusbarPart extends Part {
     // Language-reactive accent: style.css maps data-hydra-lang to --hydra-accent.
     document.documentElement.setAttribute('data-hydra-lang', this._currentProgLang);
     const displayName = StatusbarPart._DISPLAY_NAMES[this._currentProgLang] ?? this._currentProgLang;
-    const humanNames: Record<string, string> = { en: 'EN', es: 'ES' };
     const progIcon = createIconElement(iconPencil());
     this._progLangEl.textContent = '';
     append(this._progLangEl, progIcon);
     this._progLangEl.append(` ${displayName}`);
 
+    // nativeName comes from whichever HumanLanguageMapping is actually registered for
+    // this id (e.g. "Español", "Italiano") — never a hardcoded per-language lookup
+    // table, so a newly-installed mapping (from the Mappings panel or a GitHub source)
+    // displays correctly with zero code changes needed here.
+    const humanMapping = LanguageRegistry.getMapping(this._currentProgLang, this._currentHumanLang);
+    const humanLabel = humanMapping?.nativeName ?? this._currentHumanLang.toUpperCase();
     const humanIcon = createIconElement(iconGlobe());
     this._humanLangEl.textContent = '';
     append(this._humanLangEl, humanIcon);
-    this._humanLangEl.append(` ${humanNames[this._currentHumanLang] ?? this._currentHumanLang}`);
+    this._humanLangEl.append(` ${humanLabel}`);
   }
 
   // ── Language mode picker ──────────────────────────────────────────────────
@@ -224,14 +248,61 @@ export class StatusbarPart extends Part {
     }, 0);
   }
 
-  private _cycleHumanLang(): void {
+  // ── Human language picker ─────────────────────────────────────────────────
+  // Used to be a silent click-to-cycle with no visible list — indistinguishable from
+  // "does nothing" whenever only one human-language mapping is registered for the
+  // current prog language (e.g. a .c file with only the Spanish mapping installed), and
+  // gave no way to discover a newly-installed one (e.g. Italian for C++) without
+  // guessing how many clicks to make. A real list, scoped to mappings that actually
+  // exist for the current prog language (a human-language mapping only makes sense
+  // paired with the language it transpiles to), same as the prog-lang picker's own
+  // scoping to installed languages.
+
+  private _showHumanLangPicker(): void {
+    if (this._humanLangPickerOverlay) {
+      this._humanLangPickerOverlay.remove();
+      this._humanLangPickerOverlay = null;
+      return;
+    }
     const mappings = LanguageRegistry.getMappingsForLanguage(this._currentProgLang);
     if (mappings.length === 0) return;
-    const ids = mappings.map(m => m.id);
-    const idx = ids.indexOf(this._currentHumanLang);
-    this._currentHumanLang = ids[(idx + 1) % ids.length];
-    this._updateLanguageDisplay();
-    this._onLanguageChange.fire({ progLang: this._currentProgLang, humanLang: this._currentHumanLang });
+
+    const overlay = $('div', ['lang-picker-overlay']);
+    const list = $('div', ['lang-picker-list']);
+
+    const selectHumanLang = (id: string) => {
+      this._currentHumanLang = id;
+      this._updateLanguageDisplay();
+      this._onLanguageChange.fire({ progLang: this._currentProgLang, humanLang: id });
+      overlay.remove();
+      this._humanLangPickerOverlay = null;
+    };
+
+    for (const m of mappings) {
+      const item = $('div', ['lang-picker-item']);
+      if (m.id === this._currentHumanLang) item.classList.add('active');
+      item.textContent = m.nativeName;
+      item.addEventListener('click', (e) => { e.stopPropagation(); selectHumanLang(m.id); });
+      append(list, item);
+    }
+    append(overlay, list);
+
+    document.body.appendChild(overlay);
+    this._humanLangPickerOverlay = overlay;
+
+    setTimeout(() => {
+      const onDocumentClick = (e: MouseEvent) => {
+        if (this._humanLangPickerOverlay !== overlay) {
+          document.removeEventListener('click', onDocumentClick);
+          return;
+        }
+        if (overlay.contains(e.target as Node)) return;
+        document.removeEventListener('click', onDocumentClick);
+        overlay.remove();
+        this._humanLangPickerOverlay = null;
+      };
+      document.addEventListener('click', onDocumentClick);
+    }, 0);
   }
 
   layout(width: number, height: number): void {

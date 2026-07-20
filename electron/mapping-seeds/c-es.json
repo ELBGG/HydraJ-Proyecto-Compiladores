@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "langId": "c",
+  "id": "es",
+  "name": "Spanish",
+  "nativeName": "Español",
+  "version": "11",
+  "keywords": {
+    "para": "for",
+    "si": "if",
+    "sino": "else",
+    "mientras": "while",
+    "hacer": "do",
+    "retornar": "return",
+    "romper": "break",
+    "continuar": "continue",
+    "cambiar": "switch",
+    "caso": "case",
+    "predeterminado": "default",
+    "ir_a": "goto",
+    "typedef": "typedef",
+    "estructura": "struct",
+    "union": "union",
+    "enum": "enum",
+    "tamano_de": "sizeof",
+    "auto": "auto",
+    "principal": "main",
+    "imprimir": "printf"
+  },
+  "types": {
+    "entero": "int",
+    "flotante": "float",
+    "caracter": "char",
+    "vacio": "void",
+    "doble": "double",
+    "largo": "long",
+    "corto": "short",
+    "sin_signo": "unsigned",
+    "con_signo": "signed"
+  },
+  "literals": {
+    "verdadero": "true",
+    "falso": "false",
+    "nulo": "NULL"
+  },
+  "modifiers": {
+    "const": "const",
+    "estatico": "static",
+    "externo": "extern",
+    "volatil": "volatile",
+    "registrar": "register"
+  },
+  "patterns": [],
+  "blockTemplate": {
+    "style": "braces",
+    "main": "entero principal()",
+    "class": "estructura {NAME}",
+    "classTrailingSemicolon": true,
+    "method": "{SIGNATURE}",
+    "lineComment": "//",
+    "ifKeyword": "si",
+    "elseKeyword": "sino",
+    "whileKeyword": "mientras",
+    "forKeyword": "para",
+    "doKeyword": "hacer",
+    "supportsDoWhile": true,
+    "forStyle": "c-style",
+    "switchKeyword": "cambiar",
+    "supportsTryCatch": false,
+    "print": "printf({TEXT})",
+    "printError": "fprintf(stderr, {TEXT})",
+    "preamble": {
+      "print": [
+        "#include <stdio.h>"
+      ],
+      "printError": [
+        "#include <stdio.h>"
+      ]
+    },
+    "varDecl": "{TYPE} {VAR}",
+    "typeOverrides": {
+      "cadena": "caracter*",
+      "booleano": "entero",
+      "var": "entero"
+    },
+    "returnKeyword": "retornar",
+    "throwTemplate": null,
+    "breakKeyword": "romper",
+    "continueKeyword": "continuar"
+  }
+}

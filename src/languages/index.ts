@@ -7,6 +7,8 @@ export type {
   ITranspileRequest,
   ITranspileResult,
 } from './tokens/types.js';
+export { parseMappingFile, mappingToFile, MappingFileError } from './tokens/mappingFile.js';
+export type { IHydraMappingFile, IHydraMappingFilePattern } from './tokens/mappingFile.js';
 
 export { TranspilerEngine } from './transpiler/TranspilerEngine.js';
 export { LanguageRegistry } from './api/LanguageRegistry.js';

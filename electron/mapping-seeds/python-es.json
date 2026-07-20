@@ -1,9 +1,9 @@
 {
+  "schemaVersion": 1,
   "langId": "python",
-  "version": "3.13",
+  "id": "es",
   "name": "Spanish",
   "nativeName": "Español",
-  "id": "es",
   "keywords": {
     "para": "for",
     "si": "if",
@@ -57,5 +57,40 @@
     "verdadero": "True",
     "falso": "False",
     "nulo": "None"
+  },
+  "modifiers": {},
+  "patterns": [],
+  "blockTemplate": {
+    "style": "indent",
+    "main": "si __name__ == \"__main__\"",
+    "class": "clase {NAME}",
+    "method": "funcion {SIGNATURE}",
+    "stripFromSignature": [
+      "^(publico|privado|protegido|estatico)\\s+",
+      "^vacio\\s+"
+    ],
+    "lineComment": "#",
+    "ifKeyword": "si",
+    "elseKeyword": "sino",
+    "whileKeyword": "mientras",
+    "forKeyword": "para",
+    "supportsDoWhile": false,
+    "forStyle": "range",
+    "switchKeyword": null,
+    "supportsTryCatch": true,
+    "tryKeyword": "intentar",
+    "catchKeyword": "excepto",
+    "print": "print({TEXT})",
+    "printError": "print({TEXT}, file=sys.stderr)",
+    "preamble": {
+      "printError": [
+        "importar sys"
+      ]
+    },
+    "varDecl": null,
+    "returnKeyword": "retornar",
+    "throwTemplate": "elevar {EXC}",
+    "breakKeyword": "romper",
+    "continueKeyword": "continuar"
   }
 }

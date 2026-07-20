@@ -13,6 +13,7 @@ export interface InstalledExtension {
 
 export class ExtensionRegistry extends Disposable {
   private _installed: InstalledExtension[] = [];
+  private _loadPromise: Promise<void> | null = null;
 
   private readonly _onDidInstall = this._register(new Emitter<InstalledExtension>());
   readonly onDidInstall = this._onDidInstall.event;
@@ -31,7 +32,18 @@ export class ExtensionRegistry extends Disposable {
     this._persistErrorHandler = handler;
   }
 
-  async loadInstalled(): Promise<void> {
+  /** Memoized like settingsStore.load()/mappingSourceStore.load() — every call after the
+   *  first (in flight or already settled) returns the SAME promise instead of re-running
+   *  the load. install()/uninstall() await this before mutating (see below) for the same
+   *  reason those two stores' set()/addOrUpdate() do: without it, a fast Install click
+   *  landing before this resolves would push onto a still-empty `_installed` and
+   *  persist() would silently overwrite every previously-installed extension on disk. */
+  loadInstalled(): Promise<void> {
+    if (!this._loadPromise) this._loadPromise = this._doLoadInstalled();
+    return this._loadPromise;
+  }
+
+  private async _doLoadInstalled(): Promise<void> {
     // Wait for extensionLoader._init() to parse manifests before querying builtins.
     await waitReady();
     const preinstalled = getBuiltinExtensions() as InstalledExtension[];
@@ -107,6 +119,7 @@ export class ExtensionRegistry extends Disposable {
   }
 
   async install(ext: InstalledExtension): Promise<void> {
+    await this.loadInstalled();
     if (this.isInstalled(ext.id)) return;
     this._installed.push(ext);
     await this._persist();
@@ -114,6 +127,7 @@ export class ExtensionRegistry extends Disposable {
   }
 
   async uninstall(id: string): Promise<void> {
+    await this.loadInstalled();
     const ext = this._installed.find(e => e.id === id);
     if (!ext) return;
     this._installed = this._installed.filter(e => e.id !== id);

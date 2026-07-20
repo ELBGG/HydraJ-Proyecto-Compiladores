@@ -23,6 +23,7 @@ export const iconMic = () => svgIcon('<rect x="5.5" y="1.5" width="5" height="8"
 export const iconBranch = () => svgIcon('<circle cx="3" cy="3" r="1.5"/><circle cx="13" cy="13" r="1.5"/><path d="M3 4.5v7a2 2 0 0 0 2 2h3"/><path d="M4.5 3h5a2 2 0 0 1 2 2v6.5"/>');
 export const iconPlay = () => svgIcon('<path d="M3 2l10 6L3 14V2Z"/>');
 export const iconExtensions = () => svgIcon('<rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/>');
+export const iconMappings = () => svgIcon('<path d="M2.5 5.5h7.5M8 2.5l2.5 3-2.5 3"/><path d="M13.5 10.5H6M8 13.5L5.5 10.5 8 7.5"/>');
 export const iconPerson = () => svgIcon('<circle cx="8" cy="5" r="3"/><path d="M2 14.5a6 6 0 0 1 12 0"/>');
 export const iconGear = () => svgIcon('<circle cx="8" cy="8" r="2.5"/><path d="M8 1.5v2M8 12.5v2M14.5 8h-2M3.5 8h-2M12.5 3.5l-1.5 1.5M5 11L3.5 12.5M12.5 12.5L11 11M5 5L3.5 3.5"/>');
 

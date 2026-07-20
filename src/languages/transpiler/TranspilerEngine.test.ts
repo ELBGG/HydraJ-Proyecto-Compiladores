@@ -223,6 +223,16 @@ describe('TranspilerEngine', () => {
       expect(result.success).toBe(true);
       expect(result.output).toBe('int main() { return 0; }');
     });
+
+    it('translates imprimir to printf', () => {
+      const result = engine.transpile({
+        code: 'imprimir("Hola Mundo");',
+        languageId: 'c',
+        humanLanguageId: 'es',
+      });
+      expect(result.success).toBe(true);
+      expect(result.output).toBe('printf("Hola Mundo");');
+    });
   });
 
   describe('C++ → Español', () => {

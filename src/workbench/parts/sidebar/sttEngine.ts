@@ -2,6 +2,21 @@ import { Emitter } from '../../../base/common/event.js';
 
 export type STTStatus = 'idle' | 'downloading' | 'loading' | 'ready' | 'starting' | 'recording' | 'error';
 
+// How often to force Kaldi to finalize/reset its internal decode graph during a long
+// recording (see startRecording()'s comment) and how long without any result before the
+// watchdog assumes the recognizer has hung and force-stops it.
+const FINALIZE_INTERVAL_MS = 15_000;
+// A blind timer would cut mid-word as often as between words — FINALIZE_QUIET_GAP_MS lets
+// the check wait for an actual gap in results (a real pause) before finalizing, so the cut
+// lands where a pause would naturally happen. FINALIZE_MAX_DELAY_MS is the hard ceiling:
+// during genuinely continuous speech with no gap ever, force it anyway rather than let the
+// decode graph grow past what the periodic finalize exists to bound in the first place.
+const FINALIZE_QUIET_GAP_MS = 400;
+const FINALIZE_MAX_DELAY_MS = 30_000;
+const FINALIZE_CHECK_INTERVAL_MS = 2_000;
+const STALL_TIMEOUT_MS = 20_000;
+const STALL_CHECK_INTERVAL_MS = 5_000;
+
 export class STTEngine {
   private _status: STTStatus = 'idle';
   private _model: any = null;
@@ -9,6 +24,10 @@ export class STTEngine {
   private _audioCtx: AudioContext | null = null;
   private _stream: MediaStream | null = null;
   private _processor: ScriptProcessorNode | null = null;
+  private _finalizeIntervalId: ReturnType<typeof setInterval> | null = null;
+  private _stallWatchdogId: ReturnType<typeof setInterval> | null = null;
+  private _lastResultAt = 0;
+  private _lastFinalizeAt = 0;
 
   private readonly _onStatus   = new Emitter<STTStatus>();
   private readonly _onProgress = new Emitter<number>();
@@ -67,6 +86,14 @@ export class STTEngine {
       this._model = await createModel(blobUrl);
       URL.revokeObjectURL(blobUrl);
 
+      // vosk-browser's Model only ever listens for 'message' on its own Worker — a
+      // Worker-side exception (e.g. a WASM allocation failure inside the Kaldi decode
+      // loop) has nowhere else to go and is otherwise silently swallowed, which is
+      // exactly what made a real freeze look like "nothing happened" in this app's logs.
+      (this._model as any)?.worker?.addEventListener?.('error', (e: ErrorEvent) => {
+        console.error('[STT] Vosk worker error:', e.message, e);
+      });
+
       this._setStatus('ready');
     } catch (err) {
       console.error('[STT] Init error:', err);
@@ -111,10 +138,12 @@ export class STTEngine {
       this._recognizer = rec;
 
       rec.on('result', (msg: any) => {
+        this._lastResultAt = Date.now();
         const text: string = msg.result?.text ?? '';
         if (text) this._onResult.fire({ partial: '', final: text });
       });
       rec.on('partialresult', (msg: any) => {
+        this._lastResultAt = Date.now();
         const partial: string = msg.result?.partial ?? '';
         if (partial) this._onResult.fire({ partial, final: '' });
       });
@@ -129,6 +158,42 @@ export class STTEngine {
       };
       source.connect(this._processor);
       this._processor.connect(this._audioCtx.destination);
+
+      // A single KaldiRecognizer streamed forever with no periodic finalization lets
+      // Kaldi's decode graph/lattice grow without bound for the whole session (this is
+      // what actually froze — see the comment on FINALIZE_INTERVAL_MS's declaration and
+      // CHANGES.md for the investigation). Forcing a finalize periodically resets that
+      // internal state. Checking on a short cadence but only actually finalizing once
+      // FINALIZE_INTERVAL_MS has elapsed AND the recognizer has gone quiet for
+      // FINALIZE_QUIET_GAP_MS (i.e. an actual pause, not an arbitrary clock tick) keeps the
+      // cut where a natural pause would already land instead of mid-word; FINALIZE_MAX_DELAY_MS
+      // is the escape hatch for speech with no gap at all, so the graph still gets bounded.
+      this._lastResultAt = Date.now();
+      this._lastFinalizeAt = Date.now();
+      this._finalizeIntervalId = setInterval(() => {
+        const now = Date.now();
+        const sinceLastFinalize = now - this._lastFinalizeAt;
+        if (sinceLastFinalize < FINALIZE_INTERVAL_MS) return;
+        const quiet = now - this._lastResultAt >= FINALIZE_QUIET_GAP_MS;
+        const overdue = sinceLastFinalize >= FINALIZE_MAX_DELAY_MS;
+        if (!quiet && !overdue) return;
+        try { this._recognizer?.retrieveFinalResult(); } catch (err) { console.error('[STT] retrieveFinalResult failed:', err); }
+        this._lastFinalizeAt = now;
+      }, FINALIZE_CHECK_INTERVAL_MS);
+
+      // Independent of *why* it stalls (decode graph growth, a wedged Worker, anything
+      // else) — if no result of any kind has arrived in STALL_TIMEOUT_MS while supposedly
+      // recording, stop pretending it's working instead of leaving the user staring at a
+      // silently hung mic indicator forever.
+      this._stallWatchdogId = setInterval(() => {
+        if (this._status === 'recording' && Date.now() - this._lastResultAt > STALL_TIMEOUT_MS) {
+          console.error('[STT] No result for', STALL_TIMEOUT_MS, 'ms — assuming the recognizer hung; stopping.');
+          // Pass 'error' straight through rather than letting stopRecording()'s own
+          // recording->ready transition fire first — otherwise subscribers briefly see
+          // a spurious "ready" (implying nothing went wrong) right before "error".
+          this.stopRecording('error');
+        }
+      }, STALL_CHECK_INTERVAL_MS);
 
       this._setStatus('recording');
     } catch (err: any) {
@@ -147,7 +212,12 @@ export class STTEngine {
     }
   }
 
-  stopRecording(): void {
+  /** `finalStatus` lets a caller that already knows this stop represents a failure (the
+   *  stall watchdog) land directly on 'error' instead of passing through 'ready' first —
+   *  otherwise subscribers see two back-to-back transitions for what is really one event. */
+  stopRecording(finalStatus: STTStatus = 'ready'): void {
+    if (this._finalizeIntervalId !== null) { clearInterval(this._finalizeIntervalId); this._finalizeIntervalId = null; }
+    if (this._stallWatchdogId !== null) { clearInterval(this._stallWatchdogId); this._stallWatchdogId = null; }
     this._processor?.disconnect();
     this._processor = null;
     this._audioCtx?.close();
@@ -155,7 +225,7 @@ export class STTEngine {
     this._stream?.getTracks().forEach(t => t.stop());
     this._stream = null;
     this._recognizer = null;
-    if (this._status === 'recording') this._setStatus('ready');
+    if (this._status === 'recording') this._setStatus(finalStatus);
   }
 
   dispose(): void {

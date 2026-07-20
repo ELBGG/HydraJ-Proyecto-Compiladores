@@ -12,13 +12,9 @@ import { Emitter } from '../base/common/event.js';
 import { Disposable } from '../base/common/lifecycle.js';
 import { ExtensionRegistry } from './parts/sidebar/extensionRegistry.js';
 import { RunEngine } from './parts/sidebar/runEngine.js';
-import {
-  registerJavaLanguages,
-  registerCLanguages,
-  registerCppLanguages,
-  registerPythonLanguages,
-  registerGoLanguages,
-} from '../languages/index.js';
+import { settingsStore } from './parts/sidebar/settingsStore.js';
+import { loadAndRegisterAllMappings } from './parts/sidebar/mappingSourceStore.js';
+import { registerGoLanguages } from '../languages/index.js';
 
 export class Workbench extends Disposable {
   private _layout: Layout;
@@ -37,6 +33,28 @@ export class Workbench extends Disposable {
     super();
     applyTheme(vsCodeDark);
 
+    // Kick off the settings load as early as possible — it's an async IPC round-trip,
+    // so this races harmlessly alongside the synchronous Part construction below; any
+    // Part reading a setting during its own constructor still gets the schema default
+    // until this resolves, then corrects itself via settingsStore.onChange.
+    void settingsStore.load();
+
+    // Java/C/C++/Python's mappings are fetched from their GitHub repos (see
+    // mappingSourceStore.ts's DEFAULT_SOURCES) rather than imported as static TS modules
+    // — each fetch falls back to a local cache (seeded with today's mapping data, so
+    // this still works fully offline / before a source repo exists yet) if the network
+    // is unavailable or a given repo can't be reached. Fired here, as early as possible,
+    // for the same reason as settingsStore.load() above — LanguageRegistry.register()
+    // calls land whenever each source resolves; nothing in the synchronous construction
+    // below requires them to already be registered (getMapping() returning undefined
+    // this briefly is already a handled case everywhere it's read).
+    void loadAndRegisterAllMappings().then(outcomes => {
+      for (const o of outcomes) {
+        if (!o.ok) console.error(`[HydraCode] No se pudo cargar el mapping de "${o.languageId}" desde ${o.repoUrl}:`, o.error);
+        else if (o.source === 'cache') console.warn(`[HydraCode] "${o.languageId}": usando mapping en caché (no se pudo contactar ${o.repoUrl}).`);
+      }
+    });
+
     this._layout = new Layout(parent);
 
     this._titlebar    = new TitlebarPart();
@@ -53,11 +71,9 @@ export class Workbench extends Disposable {
     this._titlebar.setPanel(panel);
     this._sidebar.setEditor(this._editor);
 
-    // Register Spanish language mappings so TextMate injection grammars can look them up.
-    registerJavaLanguages();
-    registerCLanguages();
-    registerCppLanguages();
-    registerPythonLanguages();
+    // Go's mapping is still a bundled static module (out of scope for the GitHub-source
+    // migration above — nobody asked for a Go-mappings-hydracode repo) so it registers
+    // synchronously, same as it always has.
     registerGoLanguages();
 
     this._extensionRegistry = this._register(new ExtensionRegistry());

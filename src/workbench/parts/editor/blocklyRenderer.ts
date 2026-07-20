@@ -241,6 +241,19 @@ export const BLOCK_DEFS = [
   },
 ];
 
+// Blockly.defineBlocksWithJsonArray() logs a console warning per block type ("X
+// overwrites previous definition") if called more than once — harmless (Blockly
+// explicitly supports redefinition), but BlocklySession.create() runs on every entry
+// into Blocks mode, so a session with a few visits produced dozens of repeated
+// warnings for the exact same, unchanged definitions. Registering once for the whole
+// app lifetime removes the noise without changing behavior.
+let _blockDefsRegistered = false;
+function ensureBlockDefsRegistered(): void {
+  if (_blockDefsRegistered) return;
+  Blockly.defineBlocksWithJsonArray(BLOCK_DEFS);
+  _blockDefsRegistered = true;
+}
+
 /* ───────────────────────────────────────────────────────────────────────────
    Toolbox XML
    ─────────────────────────────────────────────────────────────────────────── */
@@ -505,7 +518,7 @@ export class BlocklySession {
     if (progLang) this._progLang = progLang;
     if (humanLang) this._humanLang = humanLang;
 
-    Blockly.defineBlocksWithJsonArray(BLOCK_DEFS);
+    ensureBlockDefsRegistered();
 
     this.workspace = Blockly.inject(container, {
       toolbox: TOOLBOX_XML,

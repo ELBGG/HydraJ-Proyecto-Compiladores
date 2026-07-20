@@ -34,6 +34,10 @@ export const cSpanish = new HumanLanguageMapping(
       'tamano_de': 'sizeof',
       'auto': 'auto',
       'principal': 'main',
+      // A plain keyword (unlike Java's 'sistema.imprimir' dotted patterns replacement)
+      // since printf is already a bare, unnamespaced function — no wrapper needed for
+      // "imprimir(texto)" to become valid C as-is.
+      'imprimir': 'printf',
     },
     types: {
       'entero': 'int',

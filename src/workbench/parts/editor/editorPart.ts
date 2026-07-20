@@ -10,6 +10,7 @@ import { getExtToLangMap } from '../sidebar/extensionLoader.js';
 import { parseCodeToBlocks } from './codeParser.js';
 import type { ExtensionRegistry } from '../sidebar/extensionRegistry.js';
 import { registerIntelligence, refreshDiagnostics } from './languageIntelligence.js';
+import { settingsStore } from '../sidebar/settingsStore.js';
 
 import {
   iconFile, iconFileCode, iconClose, iconTranspile,
@@ -41,8 +42,8 @@ export class EditorPart extends Part {
   private _monacoEditor: monaco.editor.IStandaloneCodeEditor | null = null;
   private _outputEditor: monaco.editor.IStandaloneCodeEditor | null = null;
   private _outputVisible = false;
-  private _currentProgLang = 'java';
-  private _currentHumanLang = 'es';
+  private _currentProgLang = settingsStore.get<string>('workbench.defaultProgLanguage', 'java');
+  private _currentHumanLang = settingsStore.get<string>('workbench.humanLanguage', 'es');
   private _extensionRegistry: ExtensionRegistry | null = null;
 
   // ── Block canvas state ────────────────────────────────────────────────────
@@ -58,9 +59,43 @@ export class EditorPart extends Part {
 
   constructor() {
     super('editor', { hasTitle: false });
+    this._register(settingsStore.onChange(({ id, value }) => {
+      if (id.startsWith('editor.')) {
+        this._applyEditorSettings();
+      } else if (id === 'workbench.defaultProgLanguage') {
+        // Only the fallback used by getActiveTabProgLang() for tabs with no detected
+        // language of their own (README, unrecognized extensions) — never retroactively
+        // reinterprets a tab that already has a real progLang, so this is safe to apply
+        // live without disturbing whatever the user currently has open.
+        this._currentProgLang = String(value);
+      }
+    }));
   }
 
   setExtensionRegistry(registry: ExtensionRegistry): void { this._extensionRegistry = registry; }
+
+  /** Builds the subset of Monaco IEditorOptions driven by Configuración → Editor —
+   *  read fresh on every editor creation and reapplied live via updateOptions() so an
+   *  already-open editor picks up a settings change without needing to reopen the tab. */
+  private _editorOptionsFromSettings(): monaco.editor.IEditorOptions & monaco.editor.IGlobalEditorOptions {
+    return {
+      fontSize: settingsStore.get<number>('editor.fontSize', 13),
+      fontFamily: settingsStore.get<string>('editor.fontFamily', "'Cascadia Code', 'Fira Code', 'JetBrains Mono', Consolas, monospace"),
+      tabSize: settingsStore.get<number>('editor.tabSize', 4),
+      wordWrap: settingsStore.get<'on' | 'off'>('editor.wordWrap', 'on'),
+      minimap: { enabled: settingsStore.get<boolean>('editor.minimapEnabled', false) },
+      lineNumbers: settingsStore.get<'on' | 'off'>('editor.lineNumbers', 'on'),
+    };
+  }
+
+  /** Live-applies the current editor.* settings to whichever Monaco instances exist
+   *  right now — a no-op for either editor that isn't currently mounted (e.g. Blocks
+   *  mode, or the welcome screen with no tab open yet). */
+  private _applyEditorSettings(): void {
+    const options = this._editorOptionsFromSettings();
+    this._monacoEditor?.updateOptions(options);
+    this._outputEditor?.updateOptions(options);
+  }
 
   // ── Public API ─────────────────────────────────────────────────────────────
 
@@ -380,17 +415,16 @@ export class EditorPart extends Part {
     }
 
     this._monacoEditor = monaco.editor.create(editorHost, {
-      value: initialContent, language: monacoLangId, theme: 'hydra-dark-plus', fontSize: 13,
-      fontFamily: "'Cascadia Code', 'Fira Code', 'JetBrains Mono', Consolas, monospace",
-      minimap: { enabled: false }, lineNumbers: 'on', scrollBeyondLastLine: false,
-      wordWrap: 'on', automaticLayout: true, tabSize: 4,
+      value: initialContent, language: monacoLangId, theme: 'hydra-dark-plus',
+      scrollBeyondLastLine: false, automaticLayout: true,
+      ...this._editorOptionsFromSettings(),
     });
 
     this._outputEditor = monaco.editor.create(outputEditorHost, {
-      value: '', language: progLang || 'plaintext', theme: 'hydra-dark-plus', fontSize: 13,
-      fontFamily: "'Cascadia Code', 'Fira Code', 'JetBrains Mono', Consolas, monospace",
-      minimap: { enabled: false }, lineNumbers: 'on', scrollBeyondLastLine: false,
-      wordWrap: 'on', automaticLayout: true, tabSize: 4, readOnly: true,
+      value: '', language: progLang || 'plaintext', theme: 'hydra-dark-plus',
+      scrollBeyondLastLine: false, automaticLayout: true,
+      ...this._editorOptionsFromSettings(),
+      readOnly: true,
     });
 
     if (progLang) {

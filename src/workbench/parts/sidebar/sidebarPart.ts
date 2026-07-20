@@ -5,11 +5,14 @@ import { Emitter } from '../../../base/common/event.js';
 import type { EditorPart } from '../editor/editorPart.js';
 import { STTEngine } from './sttEngine.js';
 import { STTPanel } from './sttPanel.js';
+import { AIInterpreter } from './aiInterpreter.js';
 import { ExtensionRegistry } from './extensionRegistry.js';
 import { ExtensionStore } from './extensionStore.js';
 import { ExtensionsPanel } from './extensionsPanel.js';
 import { RunEngine } from './runEngine.js';
 import { RunPanel } from './runPanel.js';
+import { SettingsPanel } from './settingsPanel.js';
+import { MappingsPanel } from './mappingsPanel.js';
 import { iconFolder, iconFolderOpen, iconFile, iconFileCode, createIconElement } from '../../../base/browser/icons.js';
 
 interface DirEntry {
@@ -27,9 +30,12 @@ export class SidebarPart extends Part {
   private _editor: EditorPart | null = null;
   private _sttEngine: STTEngine | null = null;
   private _sttPanel: STTPanel | null = null;
+  private _aiInterpreter: AIInterpreter | null = null;
   private _extensionRegistry: ExtensionRegistry | null = null;
   private _runEngine: RunEngine | null = null;
   private _runPanel: RunPanel | null = null;
+  private _settingsPanel: SettingsPanel | null = null;
+  private _mappingsPanel: MappingsPanel | null = null;
 
   private readonly _onFileOpen = this._register(new Emitter<{ path: string; label: string }>());
   readonly onFileOpen = this._onFileOpen.event;
@@ -69,7 +75,9 @@ export class SidebarPart extends Part {
       case 'source-control':  this._renderPlaceholder('SOURCE CONTROL', 'No changes detected.'); break;
       case 'debug':           this._renderDebug();       break;
       case 'extensions':      this._renderExtensions(); break;
+      case 'mappings':        this._renderMappings();    break;
       case 'stt':             this._renderSTT();         break;
+      case 'settings':        this._renderSettings();    break;
       default:                this._renderPlaceholder(id.toUpperCase(), ''); break;
     }
   }
@@ -125,6 +133,14 @@ export class SidebarPart extends Part {
   private _renderExtensions(): void {
     if (!this._contentEl || !this._extensionRegistry) return;
     new ExtensionsPanel(this._contentEl, this._extensionRegistry, new ExtensionStore());
+  }
+
+  // ── Mappings ──────────────────────────────────────────────────────────────
+
+  private _renderMappings(): void {
+    if (!this._contentEl) return;
+    this._mappingsPanel?.dispose();
+    this._mappingsPanel = new MappingsPanel(this._contentEl);
   }
 
   // ── Explorer ───────────────────────────────────────────────────────────────
@@ -255,17 +271,29 @@ export class SidebarPart extends Part {
   private _renderSTT(): void {
     if (!this._contentEl) return;
 
-    // Create engine singleton (persists across section switches)
+    // Create engine/interpreter singletons (persist across section switches so a
+    // recording in progress, or a pending init, isn't torn down just by navigating away
+    // and back — AIInterpreter itself is now stateless, reading settings live from the
+    // shared settingsStore, but keeping one instance around is still the simplest thing).
     if (!this._sttEngine) {
       this._sttEngine = new STTEngine();
+    }
+    if (!this._aiInterpreter) {
+      this._aiInterpreter = new AIInterpreter();
     }
 
     // Dispose the previous panel's listeners before re-creating (DOM was cleared) — mirrors
     // _renderDebug()'s RunPanel disposal, so switching to STT and back doesn't accumulate
     // stale listeners on the long-lived sttEngine singleton.
     this._sttPanel?.dispose();
-    this._sttPanel = new STTPanel(this._contentEl, this._sttEngine);
+    this._sttPanel = new STTPanel(this._contentEl, this._sttEngine, this._aiInterpreter);
     if (this._editor) this._sttPanel.setEditor(this._editor);
+  }
+
+  private _renderSettings(): void {
+    if (!this._contentEl) return;
+    this._settingsPanel?.dispose();
+    this._settingsPanel = new SettingsPanel(this._contentEl);
   }
 
   layout(width: number, height: number): void {

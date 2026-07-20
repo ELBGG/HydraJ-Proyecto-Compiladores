@@ -2,24 +2,11 @@ import { $, append } from '../../../base/browser/dom.js';
 import type { ExtensionRegistry } from './extensionRegistry.js';
 import type { ExtensionStore, MarketplaceExtension } from './extensionStore.js';
 import { MONACO_LANG_FILE_EXTENSIONS } from './extensionStore.js';
-import { LanguageRegistry, HumanLanguageMapping } from '../../../languages/index.js';
-
-const EXAMPLE_MAPPINGS: Array<{
-  label: string;
-  langId: string;
-  file: string;
-}> = [
-  { label: 'Java 17',   langId: 'java',   file: 'java-es.json' },
-  { label: 'C11',       langId: 'c',      file: 'c-es.json' },
-  { label: 'C++20',     langId: 'cpp',    file: 'cpp-es.json' },
-  { label: 'Python 3',  langId: 'python', file: 'python-es.json' },
-];
 
 export class ExtensionsPanel {
   private _mainContent!: HTMLElement;
   private _installedSection!: HTMLElement;
   private _resultsSection!: HTMLElement;
-  private _importSection!: HTMLElement;
   private _detailEl: HTMLElement | null = null;
   private _searchTimeout: ReturnType<typeof setTimeout> | null = null;
   private _searchGeneration = 0;
@@ -59,10 +46,6 @@ export class ExtensionsPanel {
 
     this._resultsSection = $('div', ['ext-section']);
     append(this._mainContent, this._resultsSection);
-
-    this._importSection = $('div', ['ext-section']);
-    append(this._mainContent, this._importSection);
-    this._renderImportSection();
 
     this._refreshInstalled();
     this._loadResults('');
@@ -147,27 +130,35 @@ export class ExtensionsPanel {
       btn.title = 'Este lenguaje ya está disponible mediante otra extensión instalada.';
     } else {
       btn.addEventListener('click', async () => {
-        if (this._registry.isInstalled(ext.id)) {
-          await this._registry.uninstall(ext.id);
-          btn.className = 'ext-btn ext-btn-install ext-detail-btn';
-          btn.textContent = 'Instalar';
-          this._refreshInstalled();
-        } else {
-          btn.disabled = true;
-          btn.textContent = 'Instalando...';
-          await this._registry.install({
-            id: ext.id,
-            displayName: ext.name,
-            languages: ext.monacoLang
-              ? [{ id: ext.monacoLang, extensions: MONACO_LANG_FILE_EXTENSIONS[ext.monacoLang] ?? [] }]
-              : [],
-            grammars: [],
-            installPath: '',
-            builtin: false,
-          });
+        // try/catch/finally (matching _installFromGithub's pattern) — without it, a
+        // rejected install()/uninstall() would leave this button stuck disabled with a
+        // mid-operation label forever, with no error shown and no way to retry short of
+        // leaving and re-entering the Extensions section.
+        try {
+          if (this._registry.isInstalled(ext.id)) {
+            await this._registry.uninstall(ext.id);
+            btn.className = 'ext-btn ext-btn-install ext-detail-btn';
+            btn.textContent = 'Instalar';
+          } else {
+            btn.disabled = true;
+            btn.textContent = 'Instalando...';
+            await this._registry.install({
+              id: ext.id,
+              displayName: ext.name,
+              languages: ext.monacoLang
+                ? [{ id: ext.monacoLang, extensions: MONACO_LANG_FILE_EXTENSIONS[ext.monacoLang] ?? [] }]
+                : [],
+              grammars: [],
+              installPath: '',
+              builtin: false,
+            });
+            btn.className = 'ext-btn ext-btn-installed ext-detail-btn';
+            btn.textContent = 'Desinstalar';
+          }
+        } catch (err) {
+          alert(`No se pudo completar la operación: ${err instanceof Error ? err.message : err}`);
+        } finally {
           btn.disabled = false;
-          btn.className = 'ext-btn ext-btn-installed ext-detail-btn';
-          btn.textContent = 'Desinstalar';
           this._refreshInstalled();
         }
       });
@@ -200,49 +191,6 @@ export class ExtensionsPanel {
     append(el, meta);
   }
 
-  private _renderImportSection(): void {
-    const container = this._importSection;
-    container.innerHTML = '';
-
-    const header = $('div', ['ext-section-title']);
-    header.textContent = 'IMPORTAR MAPPINGS';
-    append(container, header);
-
-    const desc = $('div', ['ext-import-desc']);
-    desc.textContent = 'Carga mappings de idioma desde archivos JSON o desde ejemplos predefinidos.';
-    append(container, desc);
-
-    const fileBtn = $('div', ['ext-import-btn']);
-    fileBtn.textContent = '📂 Importar archivo JSON';
-    fileBtn.title = 'Seleccionar un archivo .json con un mapping';
-    fileBtn.addEventListener('click', () => this._importMapping());
-    append(container, fileBtn);
-
-    const examplesHeader = $('div', ['ext-section-subtitle']);
-    examplesHeader.textContent = 'EJEMPLOS INTEGRADOS';
-    append(container, examplesHeader);
-
-    const grid = $('div', ['ext-examples-grid']);
-    for (const ex of EXAMPLE_MAPPINGS) {
-      const card = $('div', ['ext-example-card']);
-      const name = $('span', ['ext-example-name']);
-      name.textContent = ex.label;
-      append(card, name);
-
-      const langTag = $('span', ['ext-example-lang']);
-      langTag.textContent = ex.langId;
-      append(card, langTag);
-
-      const loadBtn = $('div', ['ext-example-load']);
-      loadBtn.textContent = 'Cargar';
-      loadBtn.addEventListener('click', () => this._loadExample(ex.file, ex.langId));
-      append(card, loadBtn);
-
-      append(grid, card);
-    }
-    append(container, grid);
-  }
-
   private _refreshInstalled(): void {
     const container = this._installedSection;
     container.innerHTML = '';
@@ -273,8 +221,13 @@ export class ExtensionsPanel {
         btn.title = 'Lenguaje integrado, no se puede desinstalar.';
       } else {
         btn.addEventListener('click', async () => {
-          await this._registry.uninstall(ext.id);
-          this._refreshInstalled();
+          try {
+            await this._registry.uninstall(ext.id);
+          } catch (err) {
+            alert(`No se pudo desinstalar: ${err instanceof Error ? err.message : err}`);
+          } finally {
+            this._refreshInstalled();
+          }
         });
       }
 
@@ -355,28 +308,43 @@ export class ExtensionsPanel {
     const doInstall = async () => {
       btn.textContent = '...';
       btn.disabled = true;
-      await this._registry.install({
-        id: ext.id,
-        displayName: ext.name,
-        languages: ext.monacoLang
-          ? [{ id: ext.monacoLang, extensions: MONACO_LANG_FILE_EXTENSIONS[ext.monacoLang] ?? [] }]
-          : [],
-        grammars: [],
-        installPath: '',
-        builtin: false,
-      });
-      btn.className = 'ext-btn ext-btn-installed';
-      btn.textContent = 'Instalado ✓';
-      btn.disabled = false;
-      btn.replaceWith(btn.cloneNode(true));
-      const newBtn = item.querySelector('button')!;
-      newBtn.addEventListener('click', async () => {
-        await this._registry.uninstall(ext.id);
-        newBtn.className = 'ext-btn ext-btn-install';
-        newBtn.textContent = 'Install';
+      try {
+        await this._registry.install({
+          id: ext.id,
+          displayName: ext.name,
+          languages: ext.monacoLang
+            ? [{ id: ext.monacoLang, extensions: MONACO_LANG_FILE_EXTENSIONS[ext.monacoLang] ?? [] }]
+            : [],
+          grammars: [],
+          installPath: '',
+          builtin: false,
+        });
+        btn.className = 'ext-btn ext-btn-installed';
+        btn.textContent = 'Instalado ✓';
+        btn.disabled = false;
+        btn.replaceWith(btn.cloneNode(true));
+        const newBtn = item.querySelector('button')!;
+        newBtn.addEventListener('click', async () => {
+          try {
+            await this._registry.uninstall(ext.id);
+            newBtn.className = 'ext-btn ext-btn-install';
+            newBtn.textContent = 'Install';
+          } catch (err) {
+            alert(`No se pudo desinstalar: ${err instanceof Error ? err.message : err}`);
+          } finally {
+            this._refreshInstalled();
+          }
+        });
+      } catch (err) {
+        // Roll back to the pre-install state rather than leaving the button stuck on
+        // "..." disabled forever — matches _installFromGithub's try/catch/finally pattern.
+        btn.className = 'ext-btn ext-btn-install';
+        btn.textContent = 'Install';
+        btn.disabled = false;
+        alert(`No se pudo instalar: ${err instanceof Error ? err.message : err}`);
+      } finally {
         this._refreshInstalled();
-      });
-      this._refreshInstalled();
+      }
     };
 
     const exactInstalled = this._registry.isInstalled(ext.id);
@@ -391,10 +359,15 @@ export class ExtensionsPanel {
       btn.className = 'ext-btn ext-btn-installed';
       btn.textContent = 'Instalado ✓';
       btn.addEventListener('click', async () => {
-        await this._registry.uninstall(ext.id);
-        btn.className = 'ext-btn ext-btn-install';
-        btn.textContent = 'Install';
-        this._refreshInstalled();
+        try {
+          await this._registry.uninstall(ext.id);
+          btn.className = 'ext-btn ext-btn-install';
+          btn.textContent = 'Install';
+        } catch (err) {
+          alert(`No se pudo desinstalar: ${err instanceof Error ? err.message : err}`);
+        } finally {
+          this._refreshInstalled();
+        }
       });
     } else if (languageProvidedElsewhere) {
       btn.className = 'ext-btn ext-btn-installed';
@@ -421,99 +394,4 @@ export class ExtensionsPanel {
     return `${n} inst`;
   }
 
-  private async _loadExample(filename: string, langId: string): Promise<void> {
-    try {
-      const resp = await fetch(`examples/mappings/${filename}`);
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const data = await resp.json();
-      this._registerMappingFromData(data, langId);
-    } catch {
-      const api = window.electronAPI;
-      if (!api) return;
-      const result = await api.extensionOps.readExampleMapping(filename);
-      if (!result.success) {
-        alert(`No se pudo cargar el ejemplo "${filename}".`);
-        return;
-      }
-      const data = JSON.parse(result.content);
-      this._registerMappingFromData(data, langId);
-    }
-  }
-
-  /**
-   * Validates that an imported mapping field (keywords/types) is a plain object — not an
-   * array, not null — whose values are all strings, and free of prototype-polluting keys.
-   * Without this, a malformed field like `{"keywords":["x","y"]}` passes the old truthy-only
-   * check and silently corrupts transpilation downstream: TranspilerEngine's
-   * Object.entries(mapping.keywords) on an array yields numeric-index keys ("0","1",...),
-   * which it then whole-word-replaces wherever those digits appear in the user's real code.
-   */
-  private _isValidMappingField(value: unknown): value is Record<string, string> {
-    if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
-    for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
-      if (key === '__proto__' || key === 'constructor' || key === 'prototype') return false;
-      if (typeof val !== 'string') return false;
-    }
-    return true;
-  }
-
-  private _registerMappingFromData(data: any, fallbackLangId: string): void {
-    try {
-      if (!data.langId && !fallbackLangId) {
-        alert('Formato inválido. El JSON debe tener un campo "langId".');
-        return;
-      }
-      if (!data.keywords && !data.types) {
-        alert('El JSON debe tener al menos un campo "keywords" o "types".');
-        return;
-      }
-      if (
-        (data.keywords !== undefined && !this._isValidMappingField(data.keywords)) ||
-        (data.types !== undefined && !this._isValidMappingField(data.types))
-      ) {
-        alert('Formato inválido: "keywords" y "types" deben ser objetos { "clave": "valor" } con valores de texto (no listas).');
-        return;
-      }
-      const langId = data.langId ?? fallbackLangId;
-      const patterns = (data.patterns ?? []).map((p: any) => ({
-        from: new RegExp(p.from, 'g'),
-        to: p.to,
-      }));
-      const mapping = new HumanLanguageMapping(
-        data.id ?? 'es',
-        data.name ?? 'Spanish',
-        data.nativeName ?? 'Español',
-        langId,
-        {
-          version: data.version,
-          keywords: data.keywords ?? {},
-          types: data.types ?? {},
-          literals: data.literals ?? {},
-          modifiers: data.modifiers ?? {},
-          patterns,
-        },
-      );
-      LanguageRegistry.register(mapping);
-      alert(`Mapping para "${langId}" importado correctamente.`);
-    } catch (e) {
-      alert(`Error al procesar el mapping: ${e}`);
-    }
-  }
-
-  private async _importMapping(): Promise<void> {
-    const api = window.electronAPI;
-    if (!api) return;
-    const result = await api.dialogOps.openJson();
-    if (result.canceled) return;
-    if (result.content === undefined) {
-      alert('Error al leer el archivo.');
-      return;
-    }
-    try {
-      const data = JSON.parse(result.content);
-      this._registerMappingFromData(data, data.langId);
-    } catch {
-      alert('Error al leer el archivo JSON.');
-    }
-  }
 }

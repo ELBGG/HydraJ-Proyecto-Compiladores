@@ -43,13 +43,47 @@ contextBridge.exposeInMainWorld('electronAPI', {
     save:                (extensions)               => ipcRenderer.invoke('extensions:save', extensions),
     load:                ()                         => ipcRenderer.invoke('extensions:load'),
     queryMarketplace:    (text)                     => ipcRenderer.invoke('marketplace:query', { text }),
-    readExampleMapping:  (filename)                 => ipcRenderer.invoke('extensions:read-example-mapping', { filename }),
   },
   dialogOps: {
     openJson: () => ipcRenderer.invoke('dialog:open-json'),
   },
   appOps: {
     about: () => ipcRenderer.invoke('app:about'),
+  },
+  settingsOps: {
+    save: (values) => ipcRenderer.invoke('settings:save', values),
+    load: ()       => ipcRenderer.invoke('settings:load'),
+  },
+  mappingOps: {
+    saveCache: (languageId, json) => ipcRenderer.invoke('mappings:save-cache', { languageId, json }),
+    loadCache: (languageId)       => ipcRenderer.invoke('mappings:load-cache', languageId),
+  },
+  mappingSourceOps: {
+    save: (sources) => ipcRenderer.invoke('mapping-sources:save', sources),
+    load: ()        => ipcRenderer.invoke('mapping-sources:load'),
+  },
+  aiOps: {
+    // Proxies the AI interpreter's chat-completion request through the main process —
+    // see main.cjs's 'ai:stream-start' handler for why (CORS on external APIs when
+    // called directly from the renderer) and for why this streams (perceived latency).
+    // Event-based rather than invoke/handle since main pushes 0+ chunk events before
+    // the final result; requestId keys the events back to this specific call.
+    streamChatCompletion: (params, onChunk) => {
+      const requestId = `ai-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      return new Promise((resolve) => {
+        const handler = (_evt, payload) => {
+          if (payload.requestId !== requestId) return;
+          if (payload.type === 'chunk') {
+            onChunk(payload.delta);
+          } else if (payload.type === 'done') {
+            ipcRenderer.removeListener('ai:stream-event', handler);
+            resolve(payload);
+          }
+        };
+        ipcRenderer.on('ai:stream-event', handler);
+        ipcRenderer.send('ai:stream-start', { requestId, ...params });
+      });
+    },
   },
   terminalOps: {
     create:  (id, cwd)        => ipcRenderer.invoke('terminal:create', { id, cwd }),
