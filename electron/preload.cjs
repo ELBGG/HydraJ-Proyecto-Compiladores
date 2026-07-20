@@ -18,6 +18,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
     readDir:    (dirPath)                   => ipcRenderer.invoke('folder:read-dir',    { path: dirPath }),
     readFile:   (filePath)                  => ipcRenderer.invoke('folder:read-file',   { path: filePath }),
     createFile: (dirPath, name, content)    => ipcRenderer.invoke('folder:create-file', { dirPath, name, content }),
+    createDir:  (dirPath, name)             => ipcRenderer.invoke('folder:create-dir',  { dirPath, name }),
+    rename:     (path, newName)             => ipcRenderer.invoke('folder:rename',      { path, newName }),
+    delete:     (path)                      => ipcRenderer.invoke('folder:delete',      { path }),
+  },
+  gitOps: {
+    status:  (cwd)          => ipcRenderer.invoke('git:status',  { cwd }),
+    init:    (cwd)          => ipcRenderer.invoke('git:init',    { cwd }),
+    stage:   (cwd, paths)   => ipcRenderer.invoke('git:stage',   { cwd, paths }),
+    unstage: (cwd, paths)   => ipcRenderer.invoke('git:unstage', { cwd, paths }),
+    discard: (cwd, paths)   => ipcRenderer.invoke('git:discard', { cwd, paths }),
+    commit:  (cwd, message) => ipcRenderer.invoke('git:commit',  { cwd, message }),
+    pull:    (cwd)          => ipcRenderer.invoke('git:pull',    { cwd }),
+    push:    (cwd)          => ipcRenderer.invoke('git:push',    { cwd }),
   },
   modelOps: {
     save: (id, data) => ipcRenderer.invoke('model:save', { id, data }),
@@ -49,6 +62,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   appOps: {
     about: () => ipcRenderer.invoke('app:about'),
+    checkForUpdates: () => ipcRenderer.invoke('app:check-for-updates'),
   },
   settingsOps: {
     save: (values) => ipcRenderer.invoke('settings:save', values),

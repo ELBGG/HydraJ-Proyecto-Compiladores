@@ -174,6 +174,97 @@
   /* children shown/hidden via JS */
 }
 
+/* ── Explorer: toolbar + inline create/rename ── */
+.sidebar-section-header-flex {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-right: 4px;
+  gap: 4px;
+}
+
+.sidebar-section-header-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-section-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  flex-shrink: 0;
+}
+
+.sidebar-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  color: var(--vscode-sideBarTitle-foreground, #ccc);
+  cursor: pointer;
+}
+.sidebar-icon-btn:hover { background: rgba(255,255,255,0.14); color: var(--vscode-foreground, #fff); }
+.sidebar-icon-btn .svg-icon svg { width: 13px; height: 13px; stroke-width: 1.8; }
+
+.sidebar-file-row-editing {
+  padding-top: 1px;
+  padding-bottom: 1px;
+}
+
+.sidebar-inline-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--vscode-input-background, #3c3c3c);
+  border: 1px solid var(--vscode-focusBorder, #007fd4);
+  color: var(--vscode-input-foreground, #ccc);
+  font-size: 13px;
+  font-family: inherit;
+  padding: 1px 4px;
+  border-radius: 2px;
+  outline: none;
+  box-sizing: border-box;
+}
+
+/* ── Explorer: context menu ── */
+.sidebar-context-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 170px;
+  padding: 4px;
+  background: var(--vscode-menu-background, #252526);
+  border: 1px solid var(--vscode-menu-border, var(--vscode-sideBar-border, #454545));
+  border-radius: 5px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+  font-size: 12.5px;
+}
+
+.sidebar-context-menu-item {
+  padding: 5px 10px;
+  border-radius: 3px;
+  color: var(--vscode-menu-foreground, #ccc);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.sidebar-context-menu-item:hover {
+  background: var(--vscode-menu-selectionBackground, var(--vscode-list-hoverBackground));
+  color: var(--vscode-menu-selectionForeground, var(--vscode-foreground));
+}
+
+.sidebar-context-menu-item-danger { color: var(--hydra-danger, #f26d6d); }
+.sidebar-context-menu-item-danger:hover { background: rgba(242, 109, 109, 0.14); color: var(--hydra-danger, #f26d6d); }
+
+.sidebar-context-menu-separator {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--vscode-sideBar-border, #454545);
+}
+
 /* ── Blocks placeholder ── */
 .blocks-placeholder {
   font-size: 12px;
@@ -1004,4 +1095,167 @@
   width: 12px;
   height: 12px;
   stroke-width: 2;
+}
+
+/* ── Source Control panel ── */
+.scm-branch-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px 4px;
+  font-size: 12px;
+  color: var(--vscode-foreground, #ccc);
+}
+.scm-branch-row .svg-icon svg { width: 13px; height: 13px; stroke-width: 1.8; }
+
+.scm-branch-label {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scm-message-input {
+  display: block;
+  margin: 4px 12px;
+  width: calc(100% - 24px);
+  height: 56px;
+  resize: vertical;
+  background: var(--vscode-input-background, #3c3c3c);
+  border: 1px solid var(--vscode-input-border, #555);
+  color: var(--vscode-input-foreground, #ccc);
+  font-size: 12px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  padding: 6px 8px;
+  border-radius: 3px;
+  outline: none;
+  box-sizing: border-box;
+}
+.scm-message-input:focus { border-color: var(--vscode-focusBorder, #007fd4); }
+
+.scm-commit-btn {
+  display: block;
+  margin: 6px 12px;
+  width: calc(100% - 24px);
+  padding: 7px 12px;
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #fff);
+  border: none;
+  border-radius: 4px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 0.1s;
+  box-sizing: border-box;
+}
+.scm-commit-btn:hover:not(:disabled) { filter: brightness(1.12); }
+.scm-commit-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.scm-sync-row {
+  display: flex;
+  gap: 6px;
+  margin: 0 12px 8px;
+}
+
+.scm-sync-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 5px 8px;
+  background: rgba(255,255,255,0.08);
+  color: var(--vscode-foreground, #ccc);
+  border: none;
+  border-radius: 3px;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 0.1s;
+}
+.scm-sync-btn:hover { filter: brightness(1.2); }
+.scm-sync-btn .svg-icon svg { width: 13px; height: 13px; stroke-width: 1.8; }
+
+.scm-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 6px 6px 12px;
+  font-family: var(--monaco-monospace-font);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--vscode-sideBarTitle-foreground, #bbb);
+  border-top: 1px solid var(--vscode-sideBar-border);
+}
+
+.scm-section-actions,
+.scm-row-actions {
+  display: none;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.scm-section-header:hover .scm-section-actions,
+.scm-file-row:hover .scm-row-actions {
+  display: inline-flex;
+}
+
+.scm-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  color: var(--vscode-foreground, #ccc);
+  cursor: pointer;
+}
+.scm-icon-btn:hover { background: rgba(255,255,255,0.12); }
+.scm-icon-btn .svg-icon svg { width: 12px; height: 12px; stroke-width: 2; }
+
+.scm-file-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 6px 0 12px;
+  font-size: 12.5px;
+}
+
+.scm-file-row-clickable { cursor: pointer; }
+.scm-file-row-clickable:hover { background: var(--vscode-list-hoverBackground); }
+
+.scm-status-badge {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--monaco-monospace-font);
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 2px;
+}
+
+.scm-status-M { color: #d9a441; }
+.scm-status-A { color: var(--vscode-terminal-ansiGreen, #4caf50); }
+.scm-status-D { color: var(--hydra-danger, #f26d6d); }
+.scm-status-R { color: var(--hydra-accent); }
+.scm-status-C { color: var(--hydra-accent); }
+.scm-status-U { color: var(--vscode-terminal-ansiGreen, #4caf50); }
+
+.scm-file-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--vscode-foreground, #ccc);
 }

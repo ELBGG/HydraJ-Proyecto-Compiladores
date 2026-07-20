@@ -28,6 +28,15 @@ export class StatusbarPart extends Part {
   private readonly _onLanguageChange = this._register(new Emitter<{ progLang: string; humanLang: string }>());
   readonly onLanguageChange = this._onLanguageChange.event;
 
+  private _branchItem!: HTMLElement;
+  private _branchLabelEl!: HTMLElement;
+
+  /** Fired when the branch item is clicked — workbench.ts wires this to switch to the
+   *  Source Control sidebar section, the same way VS Code's own status bar branch
+   *  indicator opens its Source Control view. */
+  private readonly _onBranchClick = this._register(new Emitter<void>());
+  readonly onBranchClick = this._onBranchClick.event;
+
   constructor() {
     super('statusbar', { hasTitle: false, minimumHeight: 22 });
     if (!this._progLangs.includes(this._currentProgLang)) this._progLangs.push(this._currentProgLang);
@@ -79,6 +88,22 @@ export class StatusbarPart extends Part {
     this._transpileStatusEl.textContent = text;
   }
 
+  /** Reflects the real git state of the open workspace — replaces what used to be a
+   *  permanently hardcoded "main" label that never changed regardless of the actual
+   *  repo. Pass null for "no workspace open" or "not a git repo" (hides the label back
+   *  down to just the icon); pass a status for a real repo, `dirty` true when there are
+   *  any staged or unstaged changes (shown as a "*" suffix, matching VS Code's own
+   *  convention for an unsaved/dirty indicator). */
+  setBranchStatus(status: { branch: string; dirty: boolean } | null): void {
+    if (!status) {
+      this._branchLabelEl.textContent = '';
+      this._branchItem.title = 'Source Control — no hay un repositorio git abierto.';
+      return;
+    }
+    this._branchLabelEl.textContent = ` ${status.branch}${status.dirty ? '*' : ''}`;
+    this._branchItem.title = `Source Control (${status.branch}${status.dirty ? ' — cambios sin confirmar' : ''})`;
+  }
+
   protected createContentArea(parent: HTMLElement): HTMLElement {
     const container = $('div', ['statusbar-content']);
     append(parent, container);
@@ -91,11 +116,13 @@ export class StatusbarPart extends Part {
     remoteItem.title = 'HydraCode';
     append(left, remoteItem);
 
-    const branchItem = $('div', ['statusbar-item']);
-    append(branchItem, createIconElement(iconBranch()));
-    branchItem.append(' main');
-    branchItem.title = 'Source Control (main)';
-    append(left, branchItem);
+    this._branchItem = $('div', ['statusbar-item']);
+    append(this._branchItem, createIconElement(iconBranch()));
+    this._branchLabelEl = document.createElement('span');
+    append(this._branchItem, this._branchLabelEl);
+    this._branchItem.title = 'Source Control — no hay un repositorio git abierto.';
+    this._branchItem.addEventListener('click', (e) => { e.stopPropagation(); this._onBranchClick.fire(); });
+    append(left, this._branchItem);
 
     this._progLangEl = $('div', ['statusbar-item', 'statusbar-lang-chip']);
     this._progLangEl.title = 'Seleccionar lenguaje de programación';

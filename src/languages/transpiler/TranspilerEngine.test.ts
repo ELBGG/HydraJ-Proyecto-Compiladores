@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { TranspilerEngine } from './TranspilerEngine.js';
 import { LanguageRegistry } from '../api/LanguageRegistry.js';
+import { HumanLanguageMapping } from '../tokens/HumanLanguageMapping.js';
 import { javaSpanish } from '../java/index.js';
 import { cSpanish } from '../c/index.js';
 import { cppSpanish } from '../cpp/index.js';
@@ -362,6 +363,54 @@ describe('TranspilerEngine', () => {
         humanLanguageId: 'fr',
       });
       expect(result.output).toBe('clase Foo {}');
+    });
+  });
+
+  describe('Unicode word-boundary matching', () => {
+    // Plain \b (ASCII \w only) silently fails to match a keyword that starts or ends
+    // in anything outside [A-Za-z0-9_] — an accented Latin letter (French "être") or a
+    // non-Latin script entirely (Japanese hiragana/katakana, where every character on
+    // both sides of the boundary is "non-word", so \b never fires at all). Regression
+    // tests for the fix (Unicode-property-aware lookaround instead of \b).
+
+    it('matches a French keyword that starts with an accented letter (ê)', () => {
+      const mapping = new HumanLanguageMapping('fr', 'French', 'Français', 'testlang', {
+        keywords: { 'être': 'is' },
+      });
+      LanguageRegistry.register(mapping);
+      const result = engine.transpile({ code: 'x être ou ne pas être y', languageId: 'testlang', humanLanguageId: 'fr' });
+      expect(result.success).toBe(true);
+      expect(result.output).toBe('x is ou ne pas is y');
+    });
+
+    it('matches a Japanese hiragana keyword with no ASCII characters at all', () => {
+      const mapping = new HumanLanguageMapping('ja', 'Japanese', '日本語', 'testlang', {
+        keywords: { 'もし': 'if' },
+      });
+      LanguageRegistry.register(mapping);
+      const result = engine.transpile({ code: 'もし (x) { retorna 1; }', languageId: 'testlang', humanLanguageId: 'ja' });
+      expect(result.success).toBe(true);
+      expect(result.output).toBe('if (x) { retorna 1; }');
+    });
+
+    it('matches a Japanese katakana keyword directly adjacent to a paren, with no separating space', () => {
+      const mapping = new HumanLanguageMapping('ja', 'Japanese', '日本語', 'testlang', {
+        keywords: { 'イフ': 'if' },
+      });
+      LanguageRegistry.register(mapping);
+      const result = engine.transpile({ code: 'イフ(x) { retorna 1; }', languageId: 'testlang', humanLanguageId: 'ja' });
+      expect(result.success).toBe(true);
+      expect(result.output).toBe('if(x) { retorna 1; }');
+    });
+
+    it('still does not match a keyword that is only a prefix of a longer word (no false positives from the fix)', () => {
+      const mapping = new HumanLanguageMapping('es', 'Spanish', 'Español', 'testlang', {
+        keywords: { 'si': 'if' },
+      });
+      LanguageRegistry.register(mapping);
+      const result = engine.transpile({ code: 'siempre(x); si (y) {}', languageId: 'testlang', humanLanguageId: 'es' });
+      expect(result.success).toBe(true);
+      expect(result.output).toBe('siempre(x); if (y) {}');
     });
   });
 });

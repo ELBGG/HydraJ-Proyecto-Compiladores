@@ -4,7 +4,7 @@ import * as monaco from 'monaco-editor';
 import { Part } from '../../part.js';
 import { $, append } from '../../../base/browser/dom.js';
 import { Emitter } from '../../../base/common/event.js';
-import { TranspilerEngine } from '../../../languages/index.js';
+import { TranspilerEngine, LanguageRegistry } from '../../../languages/index.js';
 import { ensureLanguage, getMonacoLangId } from './monacoLanguage.js';
 import { getExtToLangMap } from '../sidebar/extensionLoader.js';
 import { parseCodeToBlocks } from './codeParser.js';
@@ -56,6 +56,13 @@ export class EditorPart extends Part {
    *  picking a language) stays in sync with whatever file is actually showing. */
   private readonly _onActiveLanguageChange = this._register(new Emitter<{ progLang: string; humanLang: string }>());
   readonly onActiveLanguageChange = this._onActiveLanguageChange.event;
+
+  /** Fires whenever the active tab changes (switching tabs, opening/closing a file) with
+   *  that tab's on-disk path (null for unsaved/untitled tabs) — lets the Explorer keep its
+   *  own "active file" highlight in sync with whatever's actually showing, the same way
+   *  VS Code's Explorer follows the editor regardless of which tab was clicked to get there. */
+  private readonly _onActiveTabChange = this._register(new Emitter<{ path: string | null }>());
+  readonly onActiveTabChange = this._onActiveTabChange.event;
 
   constructor() {
     super('editor', { hasTitle: false });
@@ -213,10 +220,15 @@ export class EditorPart extends Part {
         alert(`El modo de bloques no está disponible para "${progLang || 'este archivo'}" todavía: su mapping no define una plantilla de bloques (blockTemplate). Consulta LANGUAGE_MAPPINGS.md para añadirla.`);
         return; // stay in text mode; _blocksMode is untouched and no canvas is shown
       }
+      // isBlocksModeSupported() above already confirmed LanguageRegistry has a mapping
+      // with a blockTemplate for this exact pair, so this lookup is guaranteed to
+      // succeed — parseCodeToBlocks() itself still tolerates a missing blockTemplate
+      // defensively, but that path is unreachable from here.
+      const mapping = LanguageRegistry.getMapping(progLang, this._currentHumanLang)!;
       const code = this._monacoEditor?.getValue() ?? this._tabContents.get(this._activeTabId) ?? '';
       let parsed: import('./blockModel.js').Block[];
       try {
-        parsed = parseCodeToBlocks(code);
+        parsed = parseCodeToBlocks(code, mapping);
       } catch (e) {
         console.error('Failed to parse code into blocks:', e);
         alert('No se pudo cambiar a modo de bloques: el código es demasiado complejo o tiene un formato inesperado.');
@@ -295,6 +307,7 @@ export class EditorPart extends Part {
     this._showTabContent(id);
     const tab = this._tabs.find(t => t.id === id);
     if (tab?.progLang) this._onActiveLanguageChange.fire({ progLang: tab.progLang, humanLang: this._currentHumanLang });
+    this._onActiveTabChange.fire({ path: tab?.path ?? null });
   }
 
   private _closeTab(id: string): void {

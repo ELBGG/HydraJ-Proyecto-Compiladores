@@ -61,6 +61,15 @@ export const iconChevronDown = () => svgIcon('<path d="M3 6l5 5 5-5"/>');
 export const iconChevronUp = () => svgIcon('<path d="M13 10L8 5 3 10"/>');
 export const iconTranspile = () => svgIcon('<path d="M3 2l10 6L3 14V2Z"/>');
 export const iconLightning = () => svgIcon('<path d="M7 1.5L2.5 9h4L5 14.5 13 6.5H8.5L10 1.5H7Z"/>');
+export const iconPlus = () => svgIcon('<path d="M8 2.5v11M2.5 8h11"/>');
+export const iconMinus = () => svgIcon('<path d="M2.5 8h11"/>');
+export const iconUpload = () => svgIcon('<path d="M8 14.5v-9M3.5 9L8 4.5 12.5 9"/><path d="M1.5 14.5h13"/>');
+export const iconSync = () => svgIcon('<path d="M13.5 8a5.5 5.5 0 0 0-9.6-3.6M2.5 8a5.5 5.5 0 0 0 9.6 3.6"/><path d="M3.9 4.4H2.5V3M12.1 11.6h1.4V13"/>');
+export const iconNewFile = () => svgIcon('<path d="M2.5 1.5h6l3.5 3.5v9h-9.5v-12.5Z"/><path d="M8.5 1.5v3.5h3.5"/><path d="M4.5 10h4M6.5 8v4"/>');
+export const iconNewFolder = () => svgIcon('<path d="M1.5 3.5a2 2 0 0 1 2-2h2.5l2 2h4.5a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-11a2 2 0 0 1-2-2v-9Z"/><path d="M8 7v4M6 9h4"/>');
+export const iconRefresh = () => svgIcon('<path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.5 2v3.5H10"/>');
+export const iconCollapseAll = () => svgIcon('<path d="M4 6.5L8 3l4 3.5M4 12.5L8 9l4 3.5"/>');
+export const iconTrash = () => svgIcon('<path d="M2.5 4.5h11M6 4.5v-2h4v2M4.5 4.5v9a1 1 0 0 0 1 1h5a1 1 0 0 0 1-1v-9"/>');
 
 // ── Helper to create an SVG element ──
 

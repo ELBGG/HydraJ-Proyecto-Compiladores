@@ -24,6 +24,10 @@ interface ElectronFolderOps {
   readDir(dirPath: string):                 Promise<{ success: boolean; entries: ElectronDirEntry[]; error?: string }>;
   readFile(filePath: string):               Promise<{ success: boolean; content: string; error?: string }>;
   createFile(dirPath: string, name: string, content: string): Promise<{ success: boolean; path?: string; error?: string }>;
+  createDir(dirPath: string, name: string): Promise<{ success: boolean; path?: string; error?: string }>;
+  rename(path: string, newName: string):    Promise<{ success: boolean; path?: string; error?: string }>;
+  /** Moves to the OS Recycle Bin/Trash (shell.trashItem in main.cjs), not a hard delete. */
+  delete(path: string):                     Promise<{ success: boolean; error?: string }>;
 }
 
 interface ElectronModelOps {
@@ -52,6 +56,12 @@ interface ElectronDialogOps {
 
 interface ElectronAppOps {
   about():                                           Promise<void>;
+  /** Triggers an update check against the GitHub Releases of this project. Actual
+   *  found/not-found/downloaded feedback is shown via native dialogs from the main
+   *  process itself (see main.cjs's setupAutoUpdater) — this promise only reports
+   *  whether the check could be *started* at all (e.g. fails outside a packaged
+   *  build, where there's no app-update.yml to read a provider from). */
+  checkForUpdates():                                 Promise<{ success: boolean; error?: string }>;
 }
 
 /** Flat, dot-namespaced settings blob (e.g. { "editor.fontSize": 13, "ai.apiKey": "..." })
@@ -125,6 +135,43 @@ interface ElectronMappingSourceOps {
   load():                              Promise<{ success: boolean; sources: HydraMappingSource[] | null }>;
 }
 
+interface HydraGitFileEntry {
+  path: string;
+  /** Raw porcelain status letter: M/A/D/R/C/U, or '?' for untracked. */
+  status: string;
+}
+
+interface HydraGitStatusResult {
+  success: boolean;
+  isRepo: boolean;
+  error?: string;
+  branch?: string;
+  /** Absolute path to the repo's top-level directory (git rev-parse --show-toplevel) —
+   *  every path in staged/unstaged is relative to this, not necessarily to the workspace
+   *  folder that was opened (which may be a subdirectory of the repo). */
+  root?: string;
+  staged?: HydraGitFileEntry[];
+  unstaged?: HydraGitFileEntry[];
+}
+
+interface HydraGitResult {
+  success: boolean;
+  error?: string;
+  stdout?: string;
+  stderr?: string;
+}
+
+interface ElectronGitOps {
+  status(cwd: string):                              Promise<HydraGitStatusResult>;
+  init(cwd: string):                                Promise<HydraGitResult>;
+  stage(cwd: string, paths: string[] | 'all'):      Promise<HydraGitResult>;
+  unstage(cwd: string, paths: string[] | 'all'):    Promise<HydraGitResult>;
+  discard(cwd: string, paths: string[] | 'all'):    Promise<HydraGitResult>;
+  commit(cwd: string, message: string):             Promise<HydraGitResult>;
+  pull(cwd: string):                                Promise<HydraGitResult>;
+  push(cwd: string):                                Promise<HydraGitResult>;
+}
+
 interface ElectronTerminalOps {
   create(id: string, cwd?: string):                  Promise<{ success: boolean; error?: string }>;
   write(id: string, data: string):                   Promise<{ success: boolean }>;
@@ -150,6 +197,7 @@ interface ElectronAPI {
   aiOps:         ElectronAIOps;
   mappingOps:    ElectronMappingOps;
   mappingSourceOps: ElectronMappingSourceOps;
+  gitOps:        ElectronGitOps;
 }
 
 interface Window {

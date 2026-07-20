@@ -56,7 +56,18 @@ export class TranspilerEngine {
     const sortedTerms = Object.keys(allMappings).sort((a, b) => b.length - a.length);
     const keywordReplacements: IKeywordReplacement[] = sortedTerms.map((term) => {
       const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      return { regex: new RegExp(`\\b${escaped}\\b`, 'g'), replacement: allMappings[term] };
+      // Plain \b relies on \w (ASCII [A-Za-z0-9_] only) — it silently fails whenever a
+      // keyword STARTS or ENDS with anything outside that set: an accented Latin letter
+      // (French "être" — \b never fires at the leading "ê") or a non-Latin script
+      // entirely (Japanese hiragana/katakana keywords — every character on both sides
+      // of the boundary is "non-word", so \b never fires at all, and the keyword is
+      // silently never replaced). Lookaround against \p{L}/\p{N} (Unicode letter/number
+      // categories, not just ASCII) fixes both: it only requires that whatever sits
+      // immediately outside the match not itself be a letter/digit/underscore,
+      // regardless of what script the keyword or its neighbors use.
+      const boundary = '(?<![\\p{L}\\p{N}_])';
+      const boundaryEnd = '(?![\\p{L}\\p{N}_])';
+      return { regex: new RegExp(`${boundary}${escaped}${boundaryEnd}`, 'gu'), replacement: allMappings[term] };
     });
 
     // 2. Split the source into code spans vs. string-literal/comment spans, so that

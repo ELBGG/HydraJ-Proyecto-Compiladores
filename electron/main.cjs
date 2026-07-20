@@ -1,7 +1,7 @@
-const { app, BrowserWindow, Menu, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog, shell, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { execSync } = require('child_process');
+const { execSync, execFile } = require('child_process');
 
 const isDev = process.env.NODE_ENV !== 'production' && !app.isPackaged;
 
@@ -17,6 +17,7 @@ function createWindow() {
     backgroundColor: '#12161f',
     frame: false,
     show: false,
+    icon: path.join(__dirname, '../build/icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -167,6 +168,46 @@ ipcMain.handle('folder:create-file', async (_event, { dirPath, name, content }) 
   }
 });
 
+ipcMain.handle('folder:create-dir', async (_event, { dirPath, name }) => {
+  const newPath = safeChildPath(dirPath, name);
+  if (!newPath) return { success: false, error: 'Nombre de carpeta inválido.' };
+  try {
+    await fs.promises.mkdir(newPath);
+    return { success: true, path: newPath };
+  } catch (err) {
+    if (err.code === 'EEXIST') return { success: false, error: 'Ya existe una carpeta con ese nombre.' };
+    return { success: false, error: String(err) };
+  }
+});
+
+// Renaming stays within the SAME directory the item already lives in (matching what the
+// Explorer's rename UI actually offers — an in-place rename, not a move) — safeChildPath
+// against that directory rejects a `newName` that tries to escape it via traversal.
+ipcMain.handle('folder:rename', async (_event, { path: oldPath, newName }) => {
+  const newPath = safeChildPath(path.dirname(oldPath), newName);
+  if (!newPath) return { success: false, error: 'Nombre inválido.' };
+  try {
+    await fs.promises.rename(oldPath, newPath);
+    return { success: true, path: newPath };
+  } catch (err) {
+    if (err.code === 'EEXIST' || err.code === 'ENOTEMPTY') return { success: false, error: 'Ya existe algo con ese nombre.' };
+    return { success: false, error: String(err) };
+  }
+});
+
+// Moves to the OS Recycle Bin/Trash (shell.trashItem) instead of a hard fs.rm — a
+// context-menu "Delete" click should be recoverable, the same way VS Code's own
+// Explorer delete is (Shift+Delete is the separate, permanent variant VS Code offers;
+// this app doesn't need that second tier for a first pass).
+ipcMain.handle('folder:delete', async (_event, { path: targetPath }) => {
+  try {
+    await shell.trashItem(targetPath);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+});
+
 // ── Path safety ───────────────────────────────────────────────────────────────
 // Resolves `name` against `baseDir`, stripping any directory-traversal
 // components, and rejects the result unless it stays contained within
@@ -186,6 +227,129 @@ function safeChildPath(baseDir, name) {
     return null;
   }
 }
+
+// ── Source Control (git) ──────────────────────────────────────────────────────
+// Shells out to the user's own `git` (same trust model as run:execute shelling out to
+// javac/python/etc. — this app doesn't bundle or vendor git). All commands run with
+// `cwd` set to the open workspace folder.
+function runGit(args, cwd) {
+  return new Promise((resolve) => {
+    execFile('git', args, { cwd, maxBuffer: 10 * 1024 * 1024, windowsHide: true }, (err, stdout, stderr) => {
+      if (err) {
+        const message = err.code === 'ENOENT'
+          ? 'git no está instalado o no se encuentra en el PATH.'
+          : (stderr || err.message || '').trim();
+        resolve({ success: false, error: message, stdout, stderr });
+      } else {
+        resolve({ success: true, stdout, stderr });
+      }
+    });
+  });
+}
+
+/** Parses `git status --porcelain=v1` (2-char status code + path per line) into staged
+ *  vs. unstaged file lists — the same information VS Code's own Source Control view
+ *  splits into its "Staged Changes" / "Changes" sections. A rename line's path field is
+ *  "old -> new"; only the new path is kept (renders as a plain modified-looking entry
+ *  rather than a dedicated rename UI — a reasonable first-pass simplification). */
+function parsePorcelainStatus(raw) {
+  const staged = [];
+  const unstaged = [];
+  for (const line of raw.split('\n')) {
+    if (!line) continue;
+    const x = line[0];
+    const y = line[1];
+    let filePath = line.slice(3);
+    if (filePath.includes(' -> ')) filePath = filePath.split(' -> ')[1];
+    if (x === '?' && y === '?') { unstaged.push({ path: filePath, status: '?' }); continue; }
+    if (x !== ' ') staged.push({ path: filePath, status: x });
+    if (y !== ' ') unstaged.push({ path: filePath, status: y });
+  }
+  return { staged, unstaged };
+}
+
+/** Resolves the actual repo root for a workspace folder that may itself be a
+ *  subdirectory of the repo (git happily finds the root by searching upward) — every
+ *  other git:* handler below runs its command with cwd=root rather than the raw
+ *  workspace path, so pathspecs (which git:status reports relative to root) always
+ *  resolve to the same files regardless of which subfolder the user opened. Returns
+ *  null and leaves the original rev-parse error (e.g. "git not installed" vs. "not a
+ *  repo") for the caller to surface instead of collapsing both into one message. */
+async function resolveRepoRoot(cwd) {
+  const result = await runGit(['rev-parse', '--show-toplevel'], cwd);
+  if (!result.success) return { root: null, error: result.error };
+  return { root: result.stdout.trim(), error: null };
+}
+
+ipcMain.handle('git:status', async (_event, { cwd }) => {
+  const { root, error } = await resolveRepoRoot(cwd);
+  if (!root) return { success: false, isRepo: false, error: error || 'Esta carpeta no es un repositorio git.' };
+
+  const branchResult = await runGit(['rev-parse', '--abbrev-ref', 'HEAD'], root);
+  const branch = branchResult.success ? branchResult.stdout.trim() : '';
+
+  const statusResult = await runGit(['status', '--porcelain=v1'], root);
+  if (!statusResult.success) return { success: false, isRepo: true, error: statusResult.error };
+
+  const { staged, unstaged } = parsePorcelainStatus(statusResult.stdout);
+  return { success: true, isRepo: true, branch, root, staged, unstaged };
+});
+
+ipcMain.handle('git:init', async (_event, { cwd }) => runGit(['init'], cwd));
+
+ipcMain.handle('git:stage', async (_event, { cwd, paths }) => {
+  const { root, error } = await resolveRepoRoot(cwd);
+  if (!root) return { success: false, error: error || 'Esta carpeta no es un repositorio git.' };
+  const args = paths === 'all' ? ['add', '-A'] : ['add', '--', ...paths];
+  return runGit(args, root);
+});
+
+ipcMain.handle('git:unstage', async (_event, { cwd, paths }) => {
+  const { root, error } = await resolveRepoRoot(cwd);
+  if (!root) return { success: false, error: error || 'Esta carpeta no es un repositorio git.' };
+  const args = paths === 'all' ? ['reset', 'HEAD', '--'] : ['reset', 'HEAD', '--', ...paths];
+  return runGit(args, root);
+});
+
+ipcMain.handle('git:discard', async (_event, { cwd, paths }) => {
+  // checkout -- restores tracked files from HEAD; untracked files need a separate clean
+  // call. Deliberately does NOT touch staged changes (unstage first if that's wanted) —
+  // matches VS Code's own "Discard Changes" scope (unstaged working-tree edits only).
+  const { root, error } = await resolveRepoRoot(cwd);
+  if (!root) return { success: false, error: error || 'Esta carpeta no es un repositorio git.' };
+  const tracked = await runGit(paths === 'all' ? ['checkout', '--', '.'] : ['checkout', '--', ...paths], root);
+  if (paths === 'all') {
+    await runGit(['clean', '-fd'], root);
+  }
+  return tracked;
+});
+
+ipcMain.handle('git:commit', async (_event, { cwd, message }) => {
+  if (!message || !message.trim()) return { success: false, error: 'El mensaje de commit no puede estar vacío.' };
+  const { root, error } = await resolveRepoRoot(cwd);
+  if (!root) return { success: false, error: error || 'Esta carpeta no es un repositorio git.' };
+  return runGit(['commit', '-m', message], root);
+});
+
+ipcMain.handle('git:pull', async (_event, { cwd }) => {
+  const { root, error } = await resolveRepoRoot(cwd);
+  if (!root) return { success: false, error: error || 'Esta carpeta no es un repositorio git.' };
+  return runGit(['pull'], root);
+});
+
+ipcMain.handle('git:push', async (_event, { cwd }) => {
+  const { root, error } = await resolveRepoRoot(cwd);
+  if (!root) return { success: false, error: error || 'Esta carpeta no es un repositorio git.' };
+  const branchResult = await runGit(['rev-parse', '--abbrev-ref', 'HEAD'], root);
+  const branch = branchResult.success ? branchResult.stdout.trim() : null;
+  const result = await runGit(['push'], root);
+  if (!result.success && branch && /no upstream branch|has no upstream/i.test(result.error || '')) {
+    // First push on a new branch — publish it the same way VS Code's "Publish Branch"
+    // button does, rather than surfacing a raw git error the user has to decode.
+    return runGit(['push', '--set-upstream', 'origin', branch], root);
+  }
+  return result;
+});
 
 // ── Vosk model cache ─────────────────────────────────────────────────────────
 ipcMain.handle('model:save', async (_event, { id, data }) => {
@@ -466,8 +630,9 @@ ipcMain.handle('app:about', async () => {
     type: 'info',
     title: 'About HydraCode',
     message: 'HydraCode',
-    detail: 'Version 0.1.0\nMultilanguage transpiling IDE\n\nSupported languages: Java, C, C++\nHuman languages: Español\n\nBuilt with Electron + Vite + Monaco Editor',
+    detail: `Version ${app.getVersion()}\nMultilanguage transpiling IDE\n\nSupported languages: Java, C, C++, Python, Go\nHuman languages: any mapping with a blockTemplate — see the Mappings panel\n\nBuilt with Electron + Vite + Monaco Editor`,
     buttons: ['OK'],
+    icon: nativeImage.createFromPath(path.join(__dirname, '../build/icon.png')),
   });
 });
 
@@ -487,6 +652,14 @@ async function checkWsl() {
   }
   return _wslAvailable;
 }
+
+// Plain \w is ASCII-only ([A-Za-z0-9_]) — a class named in any non-Latin script (e.g.
+// こんにちは, from testing the Japanese mapping) wouldn't be captured, silently falling
+// back to "Main" for the FILENAME while the source's own `class こんにちは` declaration
+// is unchanged — javac requires a public class's name to match its filename exactly, so
+// that mismatch is a guaranteed compile error. \p{L}/\p{N} (Unicode letter/number, any
+// script) fixes it, same reasoning as TranspilerEngine.ts's keyword-boundary fix.
+const JAVA_CLASS_NAME_RE = /(?:public\s+)?class\s+([\p{L}\p{N}_$]+)/u;
 
 ipcMain.handle('run:execute', async (event, { code, language, debug }) => {
   const { spawn } = require('child_process');
@@ -547,7 +720,7 @@ ipcMain.handle('run:execute', async (event, { code, language, debug }) => {
   try {
     // ── Java ──
     if (language === 'java') {
-      const classMatch = code.match(/(?:public\s+)?class\s+(\w+)/);
+      const classMatch = code.match(JAVA_CLASS_NAME_RE);
       const className = classMatch ? classMatch[1] : 'Main';
       const filePath = path.join(runDir, `${className}.java`);
       await fs.promises.writeFile(filePath, code, 'utf-8');
@@ -703,11 +876,45 @@ ipcMain.handle('run:execute', async (event, { code, language, debug }) => {
   }
 });
 
-// Writes the C/C++ source and returns the shell command to compile+run it, so the
-// renderer can type it into the real interactive terminal (real PTY, real stdin) instead
-// of the isolated, non-interactive run:execute pipe — programs that call scanf/cin can't
-// be given input at all through that path, only through a genuine terminal.
+// Writes the source and returns the shell command to compile+run it, so the renderer
+// can type it into the real interactive terminal (real PTY, real stdin) instead of the
+// isolated, non-interactive run:execute pipe — a program that reads stdin (scanf/cin,
+// Python's input(), Java's Scanner/System.in) can't be given input at all through that
+// path, only through a genuine terminal. The terminal itself is powershell.exe on
+// Windows (see terminal:create) — Windows PowerShell 5.1 has no &&/|| chain operators,
+// so "compile, then run only if that succeeded" uses "; if ($?) { ... }" instead,
+// except for C/C++ where the whole chain is handed to a bash -c string under WSL (bash
+// DOES support &&, and that string is opaque to the outer PowerShell either way).
 ipcMain.handle('run:prepare-terminal', async (_event, { code, language }) => {
+  const os = require('os');
+  const runDir = path.join(os.tmpdir(), 'hydracode-run');
+  try { await fs.promises.mkdir(runDir, { recursive: true }); } catch {}
+
+  if (language === 'java') {
+    const classMatch = code.match(JAVA_CLASS_NAME_RE);
+    const className = classMatch ? classMatch[1] : 'Main';
+    const filePath = path.join(runDir, `${className}.java`);
+    try {
+      await fs.promises.writeFile(filePath, code, 'utf-8');
+    } catch (err) {
+      return { success: false, error: String(err) };
+    }
+    const command = `cd '${runDir}'; javac '${className}.java'; if ($?) { java -cp '${runDir}' ${className} }`;
+    return { success: true, command };
+  }
+
+  if (language === 'python') {
+    const filePath = path.join(runDir, 'main.py');
+    try {
+      await fs.promises.writeFile(filePath, code, 'utf-8');
+    } catch (err) {
+      return { success: false, error: String(err) };
+    }
+    const pyCmd = process.platform === 'win32' ? 'python' : 'python3';
+    const command = `cd '${runDir}'; ${pyCmd} 'main.py'`;
+    return { success: true, command };
+  }
+
   if (language !== 'c' && language !== 'cpp') {
     return { success: false, error: `Lenguaje "${language}" no soportado para ejecución en terminal.` };
   }
@@ -715,10 +922,6 @@ ipcMain.handle('run:prepare-terminal', async (_event, { code, language }) => {
   if (!hasWsl) {
     return { success: false, error: 'WSL no está instalado. Instala WSL desde https://learn.microsoft.com/windows/wsl/install' };
   }
-
-  const os = require('os');
-  const runDir = path.join(os.tmpdir(), 'hydracode-run');
-  try { await fs.promises.mkdir(runDir, { recursive: true }); } catch {}
 
   const ext = language === 'c' ? 'c' : 'cpp';
   const compiler = language === 'c' ? 'gcc' : 'g++';
@@ -897,10 +1100,102 @@ ipcMain.handle('dialog:open-json', async () => {
   }
 });
 
+// ── Auto-update (GitHub Releases) ────────────────────────────────────────────
+// electron-updater reads its provider config from `app-update.yml`, a file
+// electron-builder auto-generates INSIDE the packaged app from this project's own
+// package.json "build.publish" config — nothing to configure here beyond that file
+// existing (it only does, inside a real packaged build). Until at least one GitHub
+// Release has been published with the installer plus the "latest.yml"/blockmap
+// electron-builder also produces alongside it, checkForUpdates() below simply
+// resolves to "no update available" (or a 404-flavored error) — same as any other
+// up-to-date check, not a broken state.
+let _manualUpdateCheckInFlight = false;
+
+function setupAutoUpdater() {
+  // Registered unconditionally (dev included) so the renderer's "Check for
+  // Updates..." menu item always gets a real response instead of an IPC error on an
+  // unregistered channel when running un-packaged.
+  ipcMain.handle('app:check-for-updates', async () => {
+    if (!app.isPackaged) {
+      return { success: false, error: 'Buscar actualizaciones solo está disponible en la app instalada, no en modo desarrollo.' };
+    }
+    _manualUpdateCheckInFlight = true;
+    try {
+      await autoUpdater.checkForUpdates();
+      return { success: true };
+    } catch (err) {
+      // autoUpdater's own 'error' listener below already showed this to the user
+      // via a dialog (since _manualUpdateCheckInFlight is true) — this return value
+      // just lets the renderer-side promise settle, nothing further to show.
+      return { success: false, error: String(err) };
+    }
+  });
+
+  if (!app.isPackaged) return; // no app-update.yml outside a real packaged build
+
+  const { autoUpdater } = require('electron-updater');
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on('update-available', (info) => {
+    console.log('[HydraCode] Update available:', info.version);
+  });
+
+  autoUpdater.on('update-not-available', () => {
+    if (_manualUpdateCheckInFlight) {
+      dialog.showMessageBox(win, {
+        type: 'info',
+        title: 'HydraCode',
+        message: 'Ya tenés la última versión instalada.',
+        buttons: ['OK'],
+      });
+    }
+    _manualUpdateCheckInFlight = false;
+  });
+
+  autoUpdater.on('error', (err) => {
+    console.error('[HydraCode] Auto-update error:', err);
+    // A silent background check failing (e.g. no network, or no releases published
+    // yet) shouldn't interrupt the user — only surface it when they explicitly
+    // asked via the menu item.
+    if (_manualUpdateCheckInFlight) {
+      dialog.showMessageBox(win, {
+        type: 'error',
+        title: 'HydraCode',
+        message: 'No se pudo buscar actualizaciones.',
+        detail: String(err?.message ?? err),
+        buttons: ['OK'],
+      });
+    }
+    _manualUpdateCheckInFlight = false;
+  });
+
+  autoUpdater.on('update-downloaded', async (info) => {
+    const result = await dialog.showMessageBox(win, {
+      type: 'info',
+      title: 'HydraCode',
+      message: `Se descargó la actualización a la versión ${info.version}.`,
+      detail: 'Reiniciá la aplicación para instalarla.',
+      buttons: ['Reiniciar ahora', 'Más tarde'],
+      defaultId: 0,
+      cancelId: 1,
+    });
+    if (result.response === 0) autoUpdater.quitAndInstall();
+  });
+
+  // Silent background check shortly after launch — delayed so it never competes
+  // with the window's own initial load, and never shows a dialog on its own
+  // (only a manually-triggered check does, via the listeners above); genuinely
+  // finding an update still triggers the auto-download → 'update-downloaded'
+  // restart prompt regardless of who initiated the check.
+  setTimeout(() => { autoUpdater.checkForUpdates().catch(() => {}); }, 5000);
+}
+
 // ── App lifecycle ────────────────────────────────────────────────────────────
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
   createWindow();
+  setupAutoUpdater();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

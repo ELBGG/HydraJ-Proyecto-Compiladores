@@ -14,6 +14,7 @@ import { ExtensionRegistry } from './parts/sidebar/extensionRegistry.js';
 import { RunEngine } from './parts/sidebar/runEngine.js';
 import { settingsStore } from './parts/sidebar/settingsStore.js';
 import { loadAndRegisterAllMappings } from './parts/sidebar/mappingSourceStore.js';
+import { getStatus as getGitStatus } from './parts/sidebar/gitService.js';
 import { registerGoLanguages } from '../languages/index.js';
 
 export class Workbench extends Disposable {
@@ -151,7 +152,7 @@ export class Workbench extends Disposable {
 
     // Activity bar → sidebar section switching + blocks mode toggle
     let _lastActiveId: string | null = 'explorer';
-    activitybar.onIconActivate((id) => {
+    const activateSection = (id: string) => {
       const wasBlocks = _lastActiveId === 'blocks';
       const isBlocks  = id === 'blocks';
 
@@ -170,9 +171,39 @@ export class Workbench extends Disposable {
           this._layout.setSidebarVisible(true);
         }
         if (wasBlocks) this._editor.setBlocksMode(false);
+        activitybar.setActiveIcon(id);
         _lastActiveId = id;
       }
+    };
+    activitybar.onIconActivate(activateSection);
+
+    // Status bar branch indicator ↔ real git state. Reflects whatever workspace is
+    // actually open instead of the permanently hardcoded "main" label this used to be.
+    const refreshBranchStatus = async (cwd: string | null) => {
+      if (!cwd) { this._statusbar.setBranchStatus(null); return; }
+      try {
+        const status = await getGitStatus(cwd);
+        this._statusbar.setBranchStatus(
+          status.isRepo && status.branch
+            ? { branch: status.branch, dirty: status.staged.length + status.unstaged.length > 0 }
+            : null,
+        );
+      } catch {
+        this._statusbar.setBranchStatus(null);
+      }
+    };
+    this._sidebar.onWorkspaceChange(path => { void refreshBranchStatus(path); });
+    // Reuses the Source Control panel's own fetch instead of a second independent
+    // git:status call every time that panel refreshes (after a commit/push/pull/...).
+    this._sidebar.onGitStatusChange(status => {
+      this._statusbar.setBranchStatus(
+        status && status.isRepo && status.branch
+          ? { branch: status.branch, dirty: status.staged.length + status.unstaged.length > 0 }
+          : null,
+      );
     });
+    // Clicking the branch indicator opens Source Control, the same way VS Code's own does.
+    this._statusbar.onBranchClick(() => activateSection('source-control'));
 
     // Keyboard shortcuts
     window.addEventListener('keydown', (e) => {

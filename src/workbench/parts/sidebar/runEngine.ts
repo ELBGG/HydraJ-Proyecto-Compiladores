@@ -29,12 +29,16 @@ export class RunEngine extends Disposable {
   readonly onStateChange = this._onStateChange.event;
 
   // Fired instead of running through runOps.execute for languages that need a real,
-  // interactive shell (currently C/C++ via WSL) — the workbench wiring listens for this
-  // and types the command into the actual Terminal tab.
+  // interactive shell (C/C++ via WSL, Java/Python natively) — the workbench wiring
+  // listens for this and types the command into the actual Terminal tab. Any program
+  // that reads stdin (scanf/cin, Python's input(), Java's Scanner/System.in) hangs
+  // forever through runOps.execute's isolated pipe — there's no way to type a response
+  // to it — so every language a student is realistically taught to read input in needs
+  // to go through here instead.
   private readonly _onRequestTerminalRun = this._register(new Emitter<{ command: string }>());
   readonly onRequestTerminalRun = this._onRequestTerminalRun.event;
 
-  private static readonly TERMINAL_LANGUAGES = new Set(['c', 'cpp']);
+  private static readonly TERMINAL_LANGUAGES = new Set(['c', 'cpp', 'java', 'python']);
 
   get isRunning(): boolean { return this._isRunning; }
 
@@ -123,8 +127,11 @@ export class RunEngine extends Disposable {
     }
   }
 
-  /** C/C++: compiles+runs through the real interactive terminal instead of the isolated
-   *  run:execute pipe, so a program that reads stdin (scanf/cin) can actually receive it.
+  /** C/C++/Java/Python: compiles+runs through the real interactive terminal instead of
+   *  the isolated run:execute pipe, so a program that reads stdin can actually receive
+   *  it (see TERMINAL_LANGUAGES' own comment for why). Note this also means these
+   *  languages don't get debug-mode support (run:execute's -Xdebug/trace flags) when
+   *  run this way — same pre-existing limitation C/C++ already had, not a new gap.
    *  Deliberately does NOT go through _isRunning/onStateChange — that machinery exists to
    *  gate the Run/Debug/Stop button states and the auto-switch-to-Output behavior for a
    *  process this class actually tracks, neither of which applies here: once the command

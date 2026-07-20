@@ -145,6 +145,8 @@ export class TitlebarPart extends Part {
       {
         label: 'Help',
         items: [
+          { label: 'Check for Updates...', action: () => this._checkForUpdates() },
+          'separator',
           { label: 'About HydraCode', action: () => window.electronAPI?.appOps.about() },
         ],
       },
@@ -443,6 +445,18 @@ export class TitlebarPart extends Part {
       const label = result.path.split(/[\\/]/).pop() ?? result.path;
       this._editor.setActiveTabPath(result.path, label);
     }
+  }
+
+  /** All the actual found/not-found/downloaded feedback is shown via native dialogs
+   *  from the main process itself (main.cjs's setupAutoUpdater) — this only needs to
+   *  surface the one failure mode that happens before any of that: the check
+   *  couldn't even start (e.g. running un-packaged, where there's no app-update.yml
+   *  for electron-updater to read a provider from). */
+  private async _checkForUpdates(): Promise<void> {
+    const api = window.electronAPI;
+    if (!api) return;
+    const result = await api.appOps.checkForUpdates();
+    if (!result.success) alert(result.error ?? 'No se pudo buscar actualizaciones.');
   }
 
   layout(width: number, height: number): void {
